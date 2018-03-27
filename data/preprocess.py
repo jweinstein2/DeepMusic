@@ -2,6 +2,8 @@
 import os
 import music21
 import fnmatch
+import multiprocessing
+import pdb
 
 # converting everything into the key of C major or A minor
 # TODO: time signature seems to change
@@ -18,16 +20,24 @@ music21.environment.UserSettings()['warnings'] = 0
 #os.chdir("./")
 src_dir = 'clean_midi'
 dst_dir = 'transposed_midi'
-for root, dirnames, filenames in os.walk(src_dir):
+should_replace = False
+
+
+def preprocess(f):
+    root, dirnames, filenames = f
     for filename in fnmatch.filter(filenames, '*.mid'):
         src_filepath = (os.path.join(root, filename))
         dst_filepath = src_filepath.replace(src_dir, dst_dir, 1)
 
+        if os.path.isfile(dst_filepath):
+            if should_replace == False:
+                print 'already transposed. skipping ' + str(filename)
+                return
+
         score = music21.converter.parse(src_filepath)
         key = score.analyze('key')
 
-        # print key.tonic.name, key.mode
-
+        print key.tonic.name, key.mode
         try:
             if key.mode == "major":
                 halfSteps = majors[key.tonic.name]
@@ -36,15 +46,25 @@ for root, dirnames, filenames in os.walk(src_dir):
         except KeyError as e:
             print "INVALID KEY: " + key.tonic.name
             print src_filepath + " skipped"
-            continue
+            return
 
         newscore = score.transpose(halfSteps)
         key = newscore.analyze('key')
         print key.tonic.name, key.mode
-        new_filename = "C_" + filename
-        newscore.write('midi', new_filename)
+        newscore.write('midi', filename)
         try:
             os.makedirs(os.path.dirname(dst_filepath))
         except OSError:
             pass
-        os.rename(new_filename, dst_filepath)
+        os.rename(filename, dst_filepath)
+
+        return
+
+if __name__ == '__main__':
+    elements = list(os.walk(src_dir))
+    print "total elements: " + str(len(elements))
+
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    pool.map(preprocess, elements)
+
+
