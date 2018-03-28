@@ -21,7 +21,11 @@ def preprocess(f):
     success = 0
     total = 0
     for filename in fnmatch.filter(filenames, '*.mid'):
-        success = transpose_pretty(root, filename)
+        # XXX: Still missing an exception but multiprocessing makes traceback difficult
+        try:
+            success += transpose_pretty(root, filename)
+        except Exception as e:
+            print e
         total += 1
 
 # Attempts to transpose a given root/filename
@@ -35,12 +39,12 @@ def transpose_pretty(root, filename):
 
     if os.path.isfile(dst_filepath):
         if should_replace == False:
-            print str(filename) + " already transposed"
+            # print str(filename) + " already transposed"
             return 1
 
     # convert to music21 and pretty_midi
     try:
-        # XXX: ignore invalid tempo change warning
+        # ignore invalid tempo change warning
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         midi_data = pretty_midi.PrettyMIDI(src_filepath)
     except IOError as e:
@@ -124,7 +128,14 @@ if __name__ == '__main__':
     pool_num = multiprocessing.cpu_count()
     print "Running with {} cpus".format(pool_num)
     pool = multiprocessing.Pool(pool_num)
-    for _ in tqdm.tqdm(pool.imap_unordered(preprocess, os.walk(src_dir)),
-                       total = elements_count):
-        pass
+    try:
+        for _ in tqdm.tqdm(pool.imap_unordered(preprocess, os.walk(src_dir)), total=elements_count):
+            pass
+    except Exception as e:
+        print "MOTHERFUCKER"
+        print e
+        print multiprocessing.pool.RemoteTraceback
+        sys.exit()
     pool.close()
+    pool.join()
+    pbar.close()
