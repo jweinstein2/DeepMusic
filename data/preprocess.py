@@ -12,7 +12,7 @@ music21.environment.UserSettings()['warnings'] = 0
 src_dir = 'clean_midi'
 dst_dir = 'transposed_midi'
 should_replace = False
-sample = True
+sample = False
 
 # Converts.mid into the key of C major or A minor
 # TODO: time signature change on non-zero track?
@@ -40,6 +40,8 @@ def transpose_pretty(root, filename):
 
     # convert to music21 and pretty_midi
     try:
+        # XXX: ignore invalid tempo change warning
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
         midi_data = pretty_midi.PrettyMIDI(src_filepath)
     except IOError as e:
         print e
@@ -53,9 +55,6 @@ def transpose_pretty(root, filename):
         print e
         print src_filepath + " skipped b/c pretty_midi error"
         return 0
-    except RuntimeWarning as w:
-        print w
-        print src_filepath + " attempting to continue"
     try:
         score = music21.converter.parse(src_filepath)
     except music21.midi.MidiException as e:
@@ -80,7 +79,7 @@ def transpose_pretty(root, filename):
                 if note.pitch >= 127: note.pitch -= 12
                 if note.pitch <= 0: note.pitch += 12
 
-    filename = filename.replace(".mid", "_pretty.mid", 1)
+    # filename = filename.replace(".mid", "_c.mid", 1)
     midi_data.write(filename)
     try:
         os.makedirs(os.path.dirname(dst_filepath))
