@@ -128,14 +128,8 @@ if __name__ == '__main__':
     pool_num = multiprocessing.cpu_count()
     print "Running with {} cpus".format(pool_num)
     pool = multiprocessing.Pool(pool_num)
-    try:
-        for _ in tqdm.tqdm(pool.imap_unordered(preprocess, os.walk(src_dir)), total=elements_count):
-            pass
-    except Exception as e:
-        print "MOTHERFUCKER"
-        print e
-        print multiprocessing.pool.RemoteTraceback
-        sys.exit()
+    for _ in tqdm.tqdm(pool.imap_unordered(preprocess, os.walk(src_dir)), total=elements_count):
+        pass
     pool.close()
     pool.join()
     pbar.close()
