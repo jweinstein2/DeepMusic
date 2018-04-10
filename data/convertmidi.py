@@ -1,6 +1,6 @@
 import os
 import pretty_midi
-import midi_to_matrix
+# import midi_to_matrix
 import numpy as np
 import midi
 
@@ -35,7 +35,7 @@ def midi_encode(midifile):
 			if event.tick != 0:
 				for i in range(event.tick):
 					grid[position_in_grid, :] = current_vector
-					position_in_grid += 1 
+					position_in_grid += 1
 			if isinstance(event, midi.NoteOffEvent):
 				current_vector[event.pitch] = 0
 			if isinstance(event, midi.NoteOnEvent):
@@ -78,10 +78,12 @@ def midi_decode(grid):
 
 songs_dir = './songs/'
 
-for filename in os.listdir(songs_dir):
-	if filename.endswith('.mid'):
-		matrix = midi_encode(songs_dir + filename)
-		pattern = midi_decode(matrix)
-		midi.write_midifile("decoded_" + filename, pattern)
-		# songMatrix = midi_to_matrix.midiToNoteStateMatrix(songs_dir + filename)
-		# midi_to_matrix.noteStateMatrixToMidi(songMatrix, name="test")
+if __name__ == "__main__":
+
+	for filename in os.listdir(songs_dir):
+		if filename.endswith('.mid'):
+			matrix = midi_encode(songs_dir + filename)
+			pattern = midi_decode(matrix)
+			midi.write_midifile("decoded_" + filename, pattern)
+			# songMatrix = midi_to_matrix.midiToNoteStateMatrix(songs_dir + filename)
+			# midi_to_matrix.noteStateMatrixToMidi(songMatrix, name="test")
