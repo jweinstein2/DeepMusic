@@ -7,7 +7,7 @@ from data.convertmidi import *
 
 print("Running tf version {}".format(tf.__version__))
 
-# Parameters and hyperparameters
+# Hyperparameters
 TIME_STEPS = 60
 N_FEATURES = 128
 N_EMBED = 64
@@ -70,6 +70,7 @@ def train(X, session):
             loss += batch_loss
         print("Epoch {} train loss: {}".format(epoch, loss))
 
+# TODO this function will not "generate" songs.. but that won't be too different
 def predict(X, session):
     preds = session.run(predict_op, feed_dict={
         X_placeholder: X,
