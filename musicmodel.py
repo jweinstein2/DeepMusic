@@ -69,11 +69,13 @@ class MusicGen:
 
                 h, state = self.stacked_lstm(x_t, state)
                 y = f(tf.matmul(h, self.W) + self.b) # piano roll prediction
+                # y = tf.matmul(h, self.W) + self.b # piano roll prediction
+
 
                 predictions.append(y)
 
                 loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
-                loss += tf.reduce_sum(y) # L1 penalty on y, since we want most elements to be 0
+                # loss += tf.reduce_sum(y) # L1 penalty on y, since we want most elements to be 0
                  
                 # TODO I think we might want to use something besides MSE? Should check papers
 
@@ -95,6 +97,7 @@ class MusicGen:
             # TODO link this to code above
             h, state = self.stacked_lstm(self.x, state)
             self.y = f(tf.matmul(h, self.W) + self.b)
+            # self.y = tf.matmul(h, self.W) + self.b
 
             self.next_hidden_state, self.next_current_state = state
 
@@ -132,7 +135,7 @@ class MusicGen:
             })
             predictions.append(y)
 
-        return np.stack(predictions, axis=1)
+        return np.stack(predictions, axis=1).astype(np.int64) 
 
 if __name__ == "__main__":
 
