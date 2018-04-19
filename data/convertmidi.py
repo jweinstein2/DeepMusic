@@ -40,8 +40,8 @@ def midi_encode(midifile):
                 current_vector[event.pitch] = 0
             if isinstance(event, midi.NoteOnEvent):
                 current_vector[event.pitch] = event.velocity
-    print grid.shape
-    print total_ticks
+    # print grid.shape
+    # print total_ticks
     return grid.tolist()
 
 
