@@ -18,6 +18,15 @@ N_EPOCHS = 10
 BATCH_SIZE = 10
 ETA = .01
 
+def f(X):
+    """
+    Custom non-linear activation function for MIDI.
+    """
+    return tf.minimum(
+        tf.maximum(X, 0),
+        128
+    )
+
 def add_graph():
     print("Building tf graph..")
 
@@ -45,7 +54,7 @@ def add_graph():
            continue
 
         h, state = lstm(x_t, state)
-        y = tf.matmul(h, W) + b
+        y = f(tf.matmul(h, W) + b)
         predictions.append(y)
         loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
         # TODO I think we might want to use something besides MSE? Should check papers
