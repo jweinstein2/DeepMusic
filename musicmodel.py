@@ -20,6 +20,16 @@ ETA = .01
 n_lstm_layers = 2
 keep_prob = 0.5
 
+def f(X):
+    """
+    Custom non-linear activation function for MIDI.
+    Ensures velocity is a valid value between 0 and 128
+    """
+    return tf.minimum(
+        tf.maximum(X, 0),
+        128
+    )
+
 def add_graph():
     print("Building tf graph..")
 
@@ -49,8 +59,10 @@ def add_graph():
            continue
 
         h, state = stacked_lstm(x_t, state)
-        y = tf.matmul(h, W) + b # piano roll prediction
+        y = f(tf.matmul(h, W) + b) # piano roll prediction
+
         predictions.append(y)
+
         loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
         loss += tf.reduce_sum(y) # L1 penalty on y, since we want most elements to be 0
          

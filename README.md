@@ -15,6 +15,7 @@
 
 ## Resources
 * [Deep Learning for Music](https://cs224d.stanford.edu/reports/allenh.pdf)
+* [RoboMozart](https://esc.fnwi.uva.nl/thesis/centraal/files/f1647680373.pdf)
 * [Composing Music With Recurrent Neural Networks: Theory](http://www.hexahedria.com/2015/08/03/composing-music-with-recurrent-neural-networks/)
 * [CNN Approach to Music Generation](https://arxiv.org/pdf/1703.10847.pdf)
 * [Temporal Dependencies in High-Dimensional Sequences](https://arxiv.org/pdf/1206.6392v1.pdf)
@@ -30,5 +31,6 @@
 * [About MIDI](http://stackoverflow.com/questions/14448380/how-do-i-read-a-midi-file-change-its-instrument-and-write-it-back)
 * [Python MIDI Library](https://github.com/vishnubob/python-midi)
 * [Free MIDI Files](http://www.mididb.com/genres/)
+
 
 ## Results
