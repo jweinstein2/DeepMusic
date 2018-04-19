@@ -12,9 +12,9 @@ print("Running tf version {}".format(tf.__version__))
 TIME_STEPS = 60
 N_FEATURES = 128
 N_EMBED = 64
-N_HIDDEN = 64
+N_HIDDEN = 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 150
+N_EPOCHS = 10
 BATCH_SIZE = 10
 ETA = .01
 n_lstm_layers = 2
@@ -30,6 +30,14 @@ def f(X):
         tf.maximum(X, 0),
         128
     )
+
+def stats(arr):
+    sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
+
+    print("  shape: {}".format(arr.shape))
+    print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
+    print("  values range from {} to {}".format(np.amin(arr), np.amax(arr)))
+
 
 training = tf.placeholder_with_default(False, shape=())
 keep_prob = tf.cond(training, lambda:tf.constant(0.5), lambda:tf.constant(1.0))
@@ -162,6 +170,7 @@ if __name__ == "__main__":
     data_o = midi_encode("data/songs/moonlightinvermont.mid")
     data = np.array(data_o)
     data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
+    stats(data)
     data = np.stack(np.split(data, TIME_STEPS, axis=0), axis=1) # Cut song into separate samples of same length
     # The data should have shape (num_trials, time_steps, num_features)
     print("Training data of shape {}".format(data.shape))
@@ -184,10 +193,9 @@ if __name__ == "__main__":
     print("  prediction tensor of shape {}".format(predictions.shape))
     print("Encoding MIDI..")
     prediction = predictions[0,:,0,:]
-    print("  values range from {} to {}".format(np.amin(prediction), np.amax(prediction)))
-    prediction = prediction.tolist()
+    stats(prediction)
 
-    pattern = midi_decode(prediction)
+    pattern = midi_decode(prediction.tolist())
     print(pattern)
     midi.write_midifile("testoutput.mid", pattern)
 
