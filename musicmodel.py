@@ -2,6 +2,7 @@ from __future__ import print_function, with_statement
 
 import tensorflow as tf
 from sklearn.utils import shuffle
+import pdb
 
 from data.convertmidi import *
 
@@ -18,7 +19,6 @@ BATCH_SIZE = 10
 ETA = .01
 
 def add_graph():
-
     print("Building tf graph..")
 
     # Input tensor
@@ -41,9 +41,8 @@ def add_graph():
     loss = 0.
 
     for t, x_t in enumerate(tf.unstack(X, axis=1)):
-
         if t == X.shape[1] - 1: # No prediction for last thing
-            continue
+           continue
 
         h, state = lstm(x_t, state)
         y = tf.matmul(h, W) + b
@@ -51,8 +50,7 @@ def add_graph():
         loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
         # TODO I think we might want to use something besides MSE? Should check papers
 
-    predictions = tf.stack(predictions, axis=1)
-
+    predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
     train = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(loss))
 
     print("Graph built successfully!")
@@ -71,17 +69,22 @@ def train(X, session):
         print("Epoch {} train loss: {}".format(epoch, loss))
 
 # TODO this function will not "generate" songs.. but that won't be too different
-def predict(X, session):
-    preds = session.run(predict_op, feed_dict={
-        X_placeholder: X,
-    })
-    return preds
+def predict(X, session, length=3600):
+    predicted = X
+
+    while predicted.shape[1] < length:
+        inp = predicted[:,-TIME_STEPS:,:]
+        preds = session.run(predict_op, feed_dict={
+            X_placeholder: inp,
+            })
+        predicted = np.concatenate((predicted, preds), axis=1)
+    return predicted
 
 if __name__ == "__main__":
 
     print("Loading data..")
-    data = midi_encode("data/songs/moonlightinvermont.mid")
-    data = np.array(data)
+    data_o = midi_encode("data/songs/moonlightinvermont.mid")
+    data = np.array(data_o)
     print(data.shape)
     data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
     data = np.stack(np.split(data, TIME_STEPS, axis=0), axis=1) # Cut song into separate samples of same length
@@ -94,13 +97,21 @@ if __name__ == "__main__":
     print("Initializing all variables")
     session.run(tf.global_variables_initializer())
 
-    # Can't train anything yet, because we don't have a well-defined loss function............
-    # So instead, I test if we can pass shit into the network to get a prediction
-
     print("Training..")
     train(data, session)
     print("Training completed!")
 
     print("Predicting..")
     predictions = predict(data[:BATCH_SIZE,:,:], session)
+    print("  prediction tensor of shape {}".format(predictions.shape))
+    print("Encoding MIDI..")
+    prediction = predictions[0,:,:]
+    print("  values range from {} to {}".format(np.amin(prediction), np.amax(prediction)))
+    prediction = prediction.clip(min=0)
+    print("  values range from {} to {}".format(np.amin(prediction), np.amax(prediction)))
+    prediction = prediction.tolist()
+
+    pattern = midi_decode(prediction)
+    midi.write_midifile("output", pattern)
+
     print("Got prediction tensor of shape {}".format(predictions.shape))
