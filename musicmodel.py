@@ -41,45 +41,34 @@ def lstm_dropout_cell():
 
 class MusicGen:
 
-	# def __init__(self):
-
-	#   # TODO parametrize constants as args here
-		
+	def __init__(self):
+		with tf.name_scope("params"):
+			# LSTM cell
+			self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout_cell() for _ in range(n_lstm_layers)])
 
 	def add_train_graph(self):
 		with tf.name_scope("train"):
 			print("Building tf graph..")
 
 			# Input tensor
-			X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
+			self.X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
 
 			# TODO maybe add an embedding layer here?
 
-			# LSTM cell
-			
-			self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout_cell() for _ in range(n_lstm_layers)])
-
-			predictions = []
-			loss = 0.
-
 			initial_state = self.stacked_lstm.zero_state(BATCH_SIZE, dtype=tf.float32)
 
-			outputs, state = tf.nn.dynamic_rnn(self.stacked_lstm, X,
+			outputs, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.X,
 										   initial_state=initial_state,
 										   dtype=tf.float32)
 
 
 			predictions = tf.layers.dense(outputs, N_OUTPUT, activation=f, name='fc')
-
-			loss += tf.losses.mean_squared_error(X, predictions)
-
-			predictions = tf.cast(predictions, tf.int64)
-
-			# predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
-			train = tf.train.AdamOptimizer(ETA).minimize(loss)
+			
+			self.loss = tf.losses.mean_squared_error(self.X, predictions)
+			self.predictions = tf.cast(predictions, tf.int64)
+			self.train_step = tf.train.AdamOptimizer(ETA).minimize(self.loss)
 
 		print("Graph built successfully!")
-		return X, predictions, loss, train
 
 	def add_gen_graph(self):
 
@@ -112,8 +101,8 @@ class MusicGen:
 			loss = 0.
 			for i in xrange(0, len(X) - BATCH_SIZE, BATCH_SIZE):
 				batch_X = X[i:i + BATCH_SIZE, :, :]
-				batch_loss, _ = session.run([loss_op, train_op], feed_dict={
-					X_placeholder: batch_X,
+				batch_loss, _ = session.run([self.loss, self.train_step], feed_dict={
+					self.X: batch_X,
 					training: True
 				})
 				loss += batch_loss
@@ -166,8 +155,8 @@ if __name__ == "__main__":
 	print("Training data of shape {}".format(data.shape))
 
 	gen = MusicGen()
-
-	X_placeholder, predict_op, loss_op, train_op = gen.add_train_graph()
+	gen.add_train_graph()
+	gen.add_gen_graph()
 
 	session = tf.Session()
 	print("Initializing all variables")
@@ -178,7 +167,6 @@ if __name__ == "__main__":
 	print("Training completed!")
 
 	print("Predicting..")
-	gen.add_gen_graph()
 	predictions = gen.predict(data[:BATCH_SIZE,:N_SEED, :], session)
 	print("  prediction tensor of shape {}".format(predictions.shape))
 	print("Encoding MIDI..")
