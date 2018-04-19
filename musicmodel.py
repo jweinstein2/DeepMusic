@@ -17,6 +17,8 @@ N_OUTPUT = N_FEATURES
 N_EPOCHS = 10
 BATCH_SIZE = 10
 ETA = .01
+n_lstm_layers = 2
+keep_prob = 0.5
 
 def add_graph():
     print("Building tf graph..")
@@ -28,6 +30,8 @@ def add_graph():
 
     # LSTM cell
     lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
+    lstm_dropout = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=keep_prob) # dropout between lstm layers
+    stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout, tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)])
 
     # Output layer parameters
     W = tf.Variable(tf.random_normal([N_HIDDEN, N_OUTPUT]))
@@ -44,10 +48,12 @@ def add_graph():
         if t == X.shape[1] - 1: # No prediction for last thing
            continue
 
-        h, state = lstm(x_t, state)
-        y = tf.matmul(h, W) + b
+        h, state = stacked_lstm(x_t, state)
+        y = tf.matmul(h, W) + b # piano roll prediction
         predictions.append(y)
         loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
+        loss += tf.reduce_sum(y) # L1 penalty on y, since we want most elements to be 0
+         
         # TODO I think we might want to use something besides MSE? Should check papers
 
     predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
