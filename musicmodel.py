@@ -14,11 +14,10 @@ N_FEATURES = 128
 N_EMBED = 64
 N_HIDDEN = 64
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 15
+N_EPOCHS = 10
 BATCH_SIZE = 10
 ETA = .01
 n_lstm_layers = 2
-keep_prob = 0.5
 
 N_SEED = 60
 
@@ -31,6 +30,9 @@ def f(X):
 		tf.maximum(X, 0),
 		128
 	)
+
+training = tf.placeholder_with_default(False, shape=())
+keep_prob = tf.cond(training, lambda:tf.constant(0.5), lambda:tf.constant(1.0))
 
 def lstm_dropout_cell():
 	lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
@@ -76,38 +78,6 @@ class MusicGen:
 			# predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
 			train = tf.train.AdamOptimizer(ETA).minimize(loss)
 
-
-			# print("Building train graph..")
-
-			# # Input tensor
-			# X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
-
-			# hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
-			# current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
-			# state = hidden_state, current_state
-
-			# predictions = []
-			# loss = 0.
-
-			# for t, x_t in enumerate(tf.unstack(X, axis=1)):
-			#     if t == X.shape[1] - 1: # No prediction for last thing
-			#        continue
-
-			#     h, state = self.stacked_lstm(x_t, state)
-			#     y = f(tf.matmul(h, self.W) + self.b) # piano roll prediction
-			#     # y = tf.matmul(h, self.W) + self.b # piano roll prediction
-
-
-			#     predictions.append(y)
-
-			#     loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
-			#     # loss += tf.reduce_sum(y) # L1 penalty on y, since we want most elements to be 0
-				 
-			#     # TODO I think we might want to use something besides MSE? Should check papers
-
-			# predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
-			# train = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(loss))
-
 		print("Graph built successfully!")
 		return X, predictions, loss, train
 
@@ -144,6 +114,7 @@ class MusicGen:
 				batch_X = X[i:i + BATCH_SIZE, :, :]
 				batch_loss, _ = session.run([loss_op, train_op], feed_dict={
 					X_placeholder: batch_X,
+					training: True
 				})
 				loss += batch_loss
 			print("Epoch {} train loss: {}".format(epoch, loss))
@@ -216,6 +187,7 @@ if __name__ == "__main__":
 	prediction = prediction.tolist()
 
 	pattern = midi_decode(prediction)
+	print(pattern)
 	midi.write_midifile("testoutput.mid", pattern)
 
 	print("Got prediction tensor of shape {}".format(predictions.shape))
