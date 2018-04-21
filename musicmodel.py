@@ -67,26 +67,22 @@ class MusicGen:
             current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
             state = hidden_state, current_state
 
-            predictions = []
-            loss = 0.
+            self.loss = 0.
 
             for t, x_t in enumerate(tf.unstack(self.X, axis=1)):
-                if t == X.shape[1] - 1: # No prediction for last thing
+                if t == self.X.shape[1] - 1: # No prediction for last thing
                    continue
 
                 h, state = self.stacked_lstm(x_t, state)
                 y = f(tf.matmul(h, self.W) + self.b) # piano roll prediction
                 # y = tf.matmul(h, self.W) + self.b # piano roll prediction
 
-
-                predictions.append(y)
-
                 self.loss += tf.losses.mean_squared_error(self.X[:,t + 1,:], y)
                 # self.loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
 
                 # TODO I think we might want to use something besides MSE? Should check papers
 
-            self.predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
+            # self.predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
             self.train_step = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(self.loss))
 
         print("Graph built successfully!")
@@ -113,8 +109,8 @@ class MusicGen:
             loss = 0.
             for i in xrange(0, len(X) - BATCH_SIZE, BATCH_SIZE):
                 batch_X = X[i:i + BATCH_SIZE, :, :]
-                batch_loss, _ = session.run([loss_op, train_op], feed_dict={
-                    X_placeholder: batch_X,
+                batch_loss, _ = session.run([self.loss, self.train_step], feed_dict={
+                    self.X: batch_X,
                 })
                 loss += batch_loss
             print("Epoch {} train loss: {}".format(epoch, loss))
@@ -155,8 +151,8 @@ if __name__ == "__main__":
     print("Training data of shape {}".format(data.shape))
 
     gen = MusicGen()
-
-    X_placeholder, predict_op, loss_op, train_op = gen.add_train_graph()
+    gen.add_train_graph()
+    gen.add_gen_graph()
 
     session = tf.Session()
     print("Initializing all variables")
@@ -167,7 +163,6 @@ if __name__ == "__main__":
     print("Training completed!")
 
     print("Predicting..")
-    gen.add_gen_graph()
     predictions = gen.predict(data[:BATCH_SIZE,:N_SEED, :], session)
     print("  prediction tensor of shape {}".format(predictions.shape))
     print("Encoding MIDI..")
