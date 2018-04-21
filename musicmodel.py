@@ -61,7 +61,7 @@ class MusicGen:
             print("Building train graph..")
 
             # Input tensor
-            X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
+            self.X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
 
             hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
             current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
@@ -70,7 +70,7 @@ class MusicGen:
             predictions = []
             loss = 0.
 
-            for t, x_t in enumerate(tf.unstack(X, axis=1)):
+            for t, x_t in enumerate(tf.unstack(self.X, axis=1)):
                 if t == X.shape[1] - 1: # No prediction for last thing
                    continue
 
@@ -81,13 +81,13 @@ class MusicGen:
 
                 predictions.append(y)
 
-                loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
-                loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
+                self.loss += tf.losses.mean_squared_error(self.X[:,t + 1,:], y)
+                # self.loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
 
                 # TODO I think we might want to use something besides MSE? Should check papers
 
-            predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
-            train = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(loss))
+            self.predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
+            self.train_step = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(self.loss))
 
         print("Graph built successfully!")
         return X, predictions, loss, train
