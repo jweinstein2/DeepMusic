@@ -12,7 +12,7 @@ print("Running tf version {}".format(tf.__version__))
 TIME_STEPS = 60
 N_FEATURES = 128
 N_EMBED = 64
-N_HIDDEN = 64
+N_HIDDEN = 128
 N_OUTPUT = N_FEATURES
 N_EPOCHS = 10
 BATCH_SIZE = 10
@@ -31,6 +31,14 @@ def f(X):
 		128
 	)
 
+def stats(arr):
+	sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
+
+	print("  shape: {}".format(arr.shape))
+	print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
+	print("  values range from {} to {}".format(np.amin(arr), np.amax(arr)))
+
+
 training = tf.placeholder_with_default(False, shape=())
 keep_prob = tf.cond(training, lambda:tf.constant(0.5), lambda:tf.constant(1.0))
 
@@ -46,6 +54,7 @@ class MusicGen:
 			# LSTM cell
 			self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout_cell() for _ in range(n_lstm_layers)])
 
+
 	def add_train_graph(self):
 		with tf.name_scope("train"):
 			print("Building tf graph..")
@@ -53,8 +62,7 @@ class MusicGen:
 			# Input tensor
 			self.X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
 
-			# TODO maybe add an embedding layer here?
-
+			# LSTM cell
 			initial_state = self.stacked_lstm.zero_state(BATCH_SIZE, dtype=tf.float32)
 
 			outputs, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.X,
@@ -111,7 +119,6 @@ class MusicGen:
 			#     saver.save(session, './model/' + 'model.ckpt', global_step=epoch+1)
 			#     print('Saved at epoch' + str(epoch))
 
-	# TODO this function will not "generate" songs.. but that won't be too different
 	def predict(self, X, session, length=3600):
 		hidden_state1 = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
 		current_state1 = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
@@ -120,7 +127,7 @@ class MusicGen:
 
 		for i in xrange(X.shape[1]):
 			y, hidden_state1, current_state1, hidden_state2, current_state2 = session.run(
-				[self.y, self.next_hidden_state1, self.next_current_state1, self.next_hidden_state2, self.next_current_state2], 
+				[self.y, self.next_hidden_state1, self.next_current_state1, self.next_hidden_state2, self.next_current_state2],
 				feed_dict={
 					self.x: X[:,i:i+1,:],
 					self.hidden_state1: hidden_state1,
@@ -132,7 +139,7 @@ class MusicGen:
 		predictions = []
 		for i in xrange(length):
 			y, hidden_state1, current_state1, hidden_state2, current_state2 = session.run(
-				[self.y, self.next_hidden_state1, self.next_current_state1, self.next_hidden_state2, self.next_current_state2], 
+				[self.y, self.next_hidden_state1, self.next_current_state1, self.next_hidden_state2, self.next_current_state2],
 				feed_dict={
 					self.x: y,
 					self.hidden_state1: hidden_state1,
@@ -142,7 +149,7 @@ class MusicGen:
 			})
 			predictions.append(y)
 
-		return np.stack(predictions, axis=1).astype(np.int64) 
+		return np.stack(predictions, axis=1).astype(np.int64)
 
 if __name__ == "__main__":
 
@@ -150,6 +157,7 @@ if __name__ == "__main__":
 	data_o = midi_encode("data/songs/moonlightinvermont.mid")
 	data = np.array(data_o)
 	data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
+	stats(data)
 	data = np.stack(np.split(data, TIME_STEPS, axis=0), axis=1) # Cut song into separate samples of same length
 	# The data should have shape (num_trials, time_steps, num_features)
 	print("Training data of shape {}".format(data.shape))
@@ -171,10 +179,9 @@ if __name__ == "__main__":
 	print("  prediction tensor of shape {}".format(predictions.shape))
 	print("Encoding MIDI..")
 	prediction = predictions[0,:,0,:]
-	print("  values range from {} to {}".format(np.amin(prediction), np.amax(prediction)))
-	prediction = prediction.tolist()
+	stats(prediction)
 
-	pattern = midi_decode(prediction)
+	pattern = midi_decode(prediction.tolist())
 	print(pattern)
 	midi.write_midifile("testoutput.mid", pattern)
 
