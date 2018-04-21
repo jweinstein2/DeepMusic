@@ -90,7 +90,6 @@ class MusicGen:
             self.train_step = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(self.loss))
 
         print("Graph built successfully!")
-        return X, predictions, loss, train
 
     def add_gen_graph(self):
 
