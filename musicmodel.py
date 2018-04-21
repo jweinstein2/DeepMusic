@@ -12,10 +12,10 @@ print("Running tf version {}".format(tf.__version__))
 TIME_STEPS = 60
 N_FEATURES = 128
 N_EMBED = 64
-N_HIDDEN = 32
+N_HIDDEN = 256
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 10
-BATCH_SIZE = 10
+N_EPOCHS = 100
+BATCH_SIZE = 30
 ETA = .01
 n_lstm_layers = 2
 keep_prob = 0.5
@@ -32,12 +32,19 @@ def f(X):
         128
     )
 
+def stats(arr):
+	sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
+
+	print("  shape: {}".format(arr.shape))
+	print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
+	print("  values range from {} to {}".format(np.amin(arr), np.amax(arr)))
+
 class MusicGen:
 
     def __init__(self):
 
         # TODO parametrize constants as args here
-        
+
         # LSTM cell
         self.stacked_lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
         # lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=keep_prob) # dropout between lstm layers
@@ -75,8 +82,8 @@ class MusicGen:
                 predictions.append(y)
 
                 loss += tf.losses.mean_squared_error(X[:,t + 1,:], y)
-                # loss += tf.reduce_sum(y) # L1 penalty on y, since we want most elements to be 0
-                 
+                loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
+
                 # TODO I think we might want to use something besides MSE? Should check papers
 
             predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
@@ -115,7 +122,7 @@ class MusicGen:
 
     # TODO this function will not "generate" songs.. but that won't be too different
     def predict(self, X, session, length=3600):
-        
+
         hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
         current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
 
@@ -135,14 +142,15 @@ class MusicGen:
             })
             predictions.append(y)
 
-        return np.stack(predictions, axis=1).astype(np.int64) 
+        return np.stack(predictions, axis=1).astype(np.int64)
 
 if __name__ == "__main__":
 
     print("Loading data..")
-    data_o = midi_encode("data/songs/moonlightinvermont.mid")
+    data_o, attributes = midi_encode("data/songs/moonlightinvermont.mid", False)
     data = np.array(data_o)
     data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
+    stats(data)
     data = np.stack(np.split(data, TIME_STEPS, axis=0), axis=1) # Cut song into separate samples of same length
     # The data should have shape (num_trials, time_steps, num_features)
     print("Training data of shape {}".format(data.shape))
@@ -165,12 +173,10 @@ if __name__ == "__main__":
     print("  prediction tensor of shape {}".format(predictions.shape))
     print("Encoding MIDI..")
     prediction = predictions[0,:,:]
-    print("  values range from {} to {}".format(np.amin(prediction), np.amax(prediction)))
-    prediction = prediction.clip(min=0)
-    print("  values range from {} to {}".format(np.amin(prediction), np.amax(prediction)))
+    stats(prediction)
     prediction = prediction.tolist()
 
-    pattern = midi_decode(prediction)
-    midi.write_midifile("output", pattern)
+    pattern = midi_decode(prediction, attributes)
+    midi.write_midifile("output.mid", pattern)
 
     print("Got prediction tensor of shape {}".format(predictions.shape))
