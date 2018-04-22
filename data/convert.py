@@ -91,7 +91,7 @@ def encode(midifile, compress=False):
             'bpm': bpm / 2,
             'compressed': compress
     }
-    return hold.tolist(), hit.tolist(), attributes
+    return hold, hit, attributes
 
 
 def decode(hold, hit, attributes):

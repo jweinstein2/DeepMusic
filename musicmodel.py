@@ -5,6 +5,7 @@ from sklearn.utils import shuffle
 import pdb
 
 from data.convertmidi import *
+from data.convert import *
 
 print("Running tf version {}".format(tf.__version__))
 
@@ -13,7 +14,7 @@ TIME_STEPS = 60
 N_FEATURES = 128
 N_EMBED = 64
 N_HIDDEN = 256
-N_OUTPUT = N_FEATURES
+N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_EPOCHS = 100
 BATCH_SIZE = 30
 ETA = .01
@@ -23,14 +24,14 @@ keep_prob = 0.5
 N_SEED = 60
 
 def f(X):
-    """
-    Custom non-linear activation function for MIDI.
-    Ensures velocity is a valid value between 0 and 128
-    """
-    return tf.minimum(
-        tf.maximum(X, 0),
-        128
-    )
+	"""
+	Custom non-linear activation function for MIDI.
+	Ensures velocity is a valid value between 0 and 128
+	"""
+	return tf.minimum(
+		tf.maximum(X, 0),
+		128
+	)
 
 def stats(arr):
 	sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
@@ -41,136 +42,183 @@ def stats(arr):
 
 class MusicGen:
 
-    def __init__(self):
+	def __init__(self):
 
-        # TODO parametrize constants as args here
+		# TODO parametrize constants as args here
 
-        # LSTM cell
-        self.stacked_lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
-        # lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=keep_prob) # dropout between lstm layers
-        # self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout, tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)])
+		# LSTM cell
+		self.stacked_lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
+		# lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=keep_prob) # dropout between lstm layers
+		# self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout, tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)])
 
-        # Output layer parameters
-        self.W = tf.Variable(tf.random_normal([N_HIDDEN, N_OUTPUT]))
-        self.b = tf.Variable(tf.zeros([N_OUTPUT]))
+		# Output layer parameters
+		self.W = tf.Variable(tf.random_normal([N_HIDDEN, N_OUTPUT * 2]))
+		self.b = tf.Variable(tf.zeros([N_OUTPUT * 2]))
 
-    def add_train_graph(self):
+	def add_train_graph(self):
 
-        with tf.name_scope("train"):
+		print("Building train graph..")
 
-            print("Building train graph..")
+		with tf.name_scope("train"):
 
-            # Input tensor
-            self.X = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
+			# Input tensors
+			self.X_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
+			self.X_hit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
+			X = tf.concat([self.X_hold, self.X_hit], axis=2)
 
-            hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
-            current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
-            state = hidden_state, current_state
+			# Output tensors
+			self.Y_hold = tf.placeholder(tf.int32, shape=[BATCH_SIZE, TIME_STEPS])
+			self.Y_hit = tf.placeholder(tf.int32, shape=[BATCH_SIZE, TIME_STEPS])
 
-            self.loss = 0.
+			hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
+			current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
+			state = hidden_state, current_state
 
-            for t, x_t in enumerate(tf.unstack(self.X, axis=1)):
-                if t == self.X.shape[1] - 1: # No prediction for last thing
-                   continue
+			self.loss = 0.
 
-                h, state = self.stacked_lstm(x_t, state)
-                y = f(tf.matmul(h, self.W) + self.b) # piano roll prediction
-                # y = tf.matmul(h, self.W) + self.b # piano roll prediction
+			for t, x_t in enumerate(tf.unstack(X, axis=1)):
+				if t == X.shape[1] - 1: # No prediction for last thing
+				   continue
 
-                self.loss += tf.losses.mean_squared_error(self.X[:,t + 1,:], y)
-                # self.loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
+				h, state = self.stacked_lstm(x_t, state)
+				# y = f(tf.matmul(h, self.W) + self.b) # piano roll prediction
+				y = tf.matmul(h, self.W) + self.b
+				y_hold, y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 
-                # TODO I think we might want to use something besides MSE? Should check papers
+				# t + 1 is right here?
+				self.loss += tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y_hold, labels=self.Y_hold[:,t + 1])
+				self.loss += tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y_hit, labels=self.Y_hit[:,t + 1])
+				# self.loss += tf.losses.mean_squared_error(self.X[:,t + 1,:], y)
+				# self.loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
 
-            # self.predictions = tf.cast(tf.stack(predictions, axis=1), tf.int64)
-            self.train_step = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(self.loss))
+			self.train_step = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(self.loss))
 
-        print("Graph built successfully!")
+		print("Train graph built successfully!")
 
-    def add_gen_graph(self):
+	def add_gen_graph(self):
 
-        with tf.name_scope("gen"):
+		print("Building gen graph..")
 
-            self.x = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
-            self.hidden_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
-            self.current_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
-            state = self.hidden_state, self.current_state
+		with tf.name_scope("gen"):
 
-            # TODO link this to code above
-            h, state = self.stacked_lstm(self.x, state)
-            self.y = f(tf.matmul(h, self.W) + self.b)
-            # self.y = tf.matmul(h, self.W) + self.b
+			self.x_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
+			self.x_hit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
+			x = tf.concat([self.x_hold, self.x_hit], axis=1)
 
-            self.next_hidden_state, self.next_current_state = state
+			self.hidden_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
+			self.current_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
+			state = self.hidden_state, self.current_state
 
-    def train(self, X, session):
-        for epoch in xrange(N_EPOCHS):
-            X = shuffle(X)
-            loss = 0.
-            for i in xrange(0, len(X) - BATCH_SIZE, BATCH_SIZE):
-                batch_X = X[i:i + BATCH_SIZE, :, :]
-                batch_loss, _ = session.run([self.loss, self.train_step], feed_dict={
-                    self.X: batch_X,
-                })
-                loss += batch_loss
-            print("Epoch {} train loss: {}".format(epoch, loss))
+			# TODO link this to code above
+			h, state = self.stacked_lstm(x, state)
+			y = tf.matmul(h, self.W) + self.b
+			self.y_hold, self.y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+			self.y_hold = tf.nn.softmax(self.y_hold)
+			self.y_hit = tf.nn.softmax(self.y_hit)
 
-    # TODO this function will not "generate" songs.. but that won't be too different
-    def predict(self, X, session, length=3600):
+			self.next_hidden_state, self.next_current_state = state
 
-        hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
-        current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
+		print("Gen graph build successfully!")
 
-        for i in xrange(X.shape[1]):
-            y, hidden_state, current_state = session.run([self.y, self.next_hidden_state, self.next_current_state], feed_dict={
-                self.x: X[:,i,:],
-                self.hidden_state: hidden_state,
-                self.current_state: current_state,
-            })
+	def train(self, X_hold, X_hit, Y_hold, Y_hit, session):
+		for epoch in xrange(N_EPOCHS):
+			X_hold, X_hit, Y_hold, Y_hit = shuffle(X_hold, X_hit, Y_hold, Y_hit)
+			loss = 0.
+			for i in xrange(0, len(X_hold) - BATCH_SIZE, BATCH_SIZE):
+				batch_loss, _ = session.run([self.loss, self.train_step], feed_dict={
+					self.X_hold: X_hold[i:i + BATCH_SIZE, :, :],
+					self.X_hit: X_hit[i:i + BATCH_SIZE, :, :],
+					self.Y_hold: Y_hold[i:i + BATCH_SIZE, :],
+					self.Y_hit: Y_hit[i:i + BATCH_SIZE, :],
+				})
+				loss += batch_loss
+			print("Epoch {} train loss: {}".format(epoch, loss))
 
-        predictions = []
-        for i in xrange(length):
-            y, hidden_state, current_state = session.run([self.y, self.next_hidden_state, self.next_current_state], feed_dict={
-                self.x: y,
-                self.hidden_state: hidden_state,
-                self.current_state: current_state,
-            })
-            predictions.append(y)
+	# TODO this function will not "generate" songs.. but that won't be too different
+	def predict(self, x_hold, x_hit, y_hold, y_hit, session, length=3600):
 
-        return np.stack(predictions, axis=1).astype(np.int64)
+		hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
+		current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
+
+		nodes = [self.y_hold, self.y_hit, self.next_hidden_state, self.next_current_state]
+
+		for i in xrange(X.shape[1]):
+			y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
+				self.x_hold: x_hold[:,i,:],
+				self.x_hit: x_hit[:,i,:],
+				self.hidden_state: hidden_state,
+				self.current_state: current_state,
+			})
+
+		pred_hold, pred_hit = [], []
+		for i in xrange(length):
+
+			y_hold = one_to_multihot(y_hold)
+			y_hit = one_to_multihot(y_hit)
+			pred_hold.append(y_hold)
+			pred_hit.append(y_hit)
+
+			y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
+				self.y_hold: y_hold,
+				self.y_hit: y_hit,
+				self.hidden_state: hidden_state,
+				self.current_state: current_state,
+			})
+
+		return (
+			np.stack(pred_hold, axis=1).astype(np.int64),
+			np.stack(pred_hit, axis=1).astype(np.int64),
+		)
+
+crop_data = lambda data: data[:len(data) - (len(data) % TIME_STEPS),:]
+stack = lambda data: np.stack(np.split(data, TIME_STEPS, axis=0), axis=1)
 
 if __name__ == "__main__":
 
-    print("Loading data..")
-    data_o, attributes = midi_encode("data/songs/moonlightinvermont.mid", False)
-    data = np.array(data_o)
-    data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
-    stats(data)
-    data = np.stack(np.split(data, TIME_STEPS, axis=0), axis=1) # Cut song into separate samples of same length
-    # The data should have shape (num_trials, time_steps, num_features)
-    print("Training data of shape {}".format(data.shape))
+	# print("Loading data..")
+	# data_o, attributes = midi_encode("data/songs/moonlightinvermont.mid", False)
+	# data = np.array(data_o)
+	# data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
+	# stats(data)
+	# data =  # Cut song into separate samples of same length
+	# # The data should have shape (num_trials, time_steps, num_features)
+	# print("Training data of shape {}".format(data.shape))
 
-    gen = MusicGen()
-    gen.add_train_graph()
-    gen.add_gen_graph()
+	print("Loading data")
+	X_hold, X_hit, attr = encode("data/songs/moonlightinvermont.mid", False)
+	
+	# Cut off extra stuff
+	X_hold, X_hit = map(crop_data, [X_hold, X_hit])
+	
+	# Build Y tensors
+	y_hold, y_hit = map(multi_to_onehot, [X_hold, X_hit])
 
-    session = tf.Session()
-    print("Initializing all variables")
-    session.run(tf.global_variables_initializer())
+	# Stack by timesteps
+	X_hold, X_hit, y_hold, y_hit = map(stack, [X_hold, X_hit, y_hold, y_hit])
 
-    print("Training..")
-    gen.train(data, session)
-    print("Training completed!")
+	print("X_hold shape: {}, y_hold shape: {}".format(X_hold.shape, y_hold.shape))
 
-    print("Predicting..")
-    predictions = gen.predict(data[:BATCH_SIZE,:N_SEED, :], session)
-    print("  prediction tensor of shape {}".format(predictions.shape))
-    print("Encoding MIDI..")
-    prediction = predictions[0,:,:]
-    stats(prediction)
-    prediction = prediction.tolist()
+	gen = MusicGen()
+	gen.add_train_graph()
+	gen.add_gen_graph()
 
-    pattern = midi_decode(prediction, attributes)
-    midi.write_midifile("output.mid", pattern)
+	session = tf.Session()
+	print("Initializing all variables")
+	session.run(tf.global_variables_initializer())
 
-    print("Got prediction tensor of shape {}".format(predictions.shape))
+	print("Training..")
+	gen.train(X_hold, X_hit, y_hold, y_hit, session)
+	print("Training completed!")
+
+	print("Predicting..")
+	pred_hold, pred_hit = gen.predict(X_hold[:BATCH_SIZE,:N_SEED, :], X_hit[:BATCH_SIZE,:N_SEED, :], session)
+	print("  prediction tensor of shape {}".format(predictions.shape))
+	print("Encoding MIDI..")
+	pred_hold, pred_hit = pred_hold[0,:,:], pred_hit[0,:,:]
+	# stats(prediction)
+	# prediction = prediction.tolist()
+
+	pattern = decode(pred_hold, pred_hit, attributes)
+	midi.write_midifile("output.mid", pattern)
+
+	print("Got prediction tensors of shape {}, {}".format(pred_hold.shape, pred_hit.shape))
