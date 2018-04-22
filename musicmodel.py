@@ -16,7 +16,7 @@ N_EMBED = 64
 N_HIDDEN = 256
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 3 # 100
+N_EPOCHS = 10 # 100
 BATCH_SIZE = 30
 ETA = .01
 n_lstm_layers = 2
@@ -34,12 +34,14 @@ def f(X):
 		128
 	)
 
-def stats(arr):
-	sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
-
-	print("  shape: {}".format(arr.shape))
-	print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
-	print("  values range from {} to {}".format(np.amin(arr), np.amax(arr)))
+def stats(pred_hold, pred_hit):
+	print("Stats:")
+	print("  mean notes held:", np.mean(np.sum(pred_hold, axis=1)))
+	print("  mean notes hit:", np.mean(np.sum(pred_hit, axis=1)))
+	# sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
+	# print("  shape: {}".format(arr.shape))
+	# print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
+	# print("  values range from {} to {}".format(np.amin(arr), np.amax(arr)))
 
 class MusicGen:
 
@@ -114,8 +116,8 @@ class MusicGen:
 			h, state = self.stacked_lstm(x, state)
 			y = tf.matmul(h, self.W) + self.b
 			self.y_hold, self.y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
-			self.y_hold = tf.round(tf.sigmoid(self.y_hold)) #softmax
-			self.y_hit = tf.round(tf.sigmoid(self.y_hit))
+			self.y_hold = tf.sigmoid(self.y_hold) #softmax
+			self.y_hit = tf.sigmoid(self.y_hit)
 
 			self.next_hidden_state, self.next_current_state = state
 
@@ -217,6 +219,7 @@ if __name__ == "__main__":
 	
 	print("Encoding MIDI..")
 	pred_hold, pred_hit = pred_hold[0,:,:], pred_hit[0,:,:]
+	stats(pred_hold, pred_hit)
 	pattern = decode(pred_hold, pred_hit, attr)
 	midi.write_midifile("output.mid", pattern)
 	print("MIDI saved!")
