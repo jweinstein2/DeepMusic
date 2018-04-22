@@ -7,13 +7,15 @@ from sklearn import preprocessing
 
 import pdb
 
+N_NOTES_MAX = 3
+
 def _compress(grid):
     reduced_data = []
     for i in range(12):
         reduced_data.append(np.max(grid[:,i::12], axis=1))
     return np.stack(reduced_data, axis=1)
 
-def one_to_multihot(array, n, l=128):
+def one_to_multihot(array, n=N_NOTES_MAX, l=128):
     combos = []
     for i in range(n + 1):
         combos += combinations(range(l), i)
@@ -24,7 +26,7 @@ def one_to_multihot(array, n, l=128):
     return np.apply_along_axis(lambda x: labels[x], axis=0, arr=array)
 
 
-def multi_to_onehot(array, n, l=128):
+def multi_to_onehot(array, n=N_NOTES_MAX, l=128):
     combos = []
     for i in range(n + 1):
         combos += combinations(range(l), i)
@@ -70,6 +72,8 @@ def encode(midifile, compress=False):
                 current_vector[event.pitch] = event.velocity
     # print grid.shape
     # print total_ticks
+    # XXX: easy way to limit num of notes per timestep
+    grid = one_to_multihot(multi_to_onehot(grid))
 
     if compress:
         # collapse octaves by taking max for each note
@@ -139,19 +143,19 @@ songs_dir = './songs/'
 if __name__ == "__main__":
     print("demo")
     arr = [[0,0,0,0],[1,1,1,1],[0,1,0,1]]
-    oh = multi_to_onehot(arr, l=4, n=3)
-    mh = one_to_multihot(oh, l=4, n=3)
+    oh = multi_to_onehot(arr, n=3, l=4)
+    mh = one_to_multihot(oh, n=3, l=4)
     print arr
     print mh
 
     for filename in os.listdir(songs_dir):
         if filename.endswith('.mid'):
             hold, hit, a = encode(songs_dir + filename, False)
-            oh_hold = multi_to_onehot(hold, 3)
-            oh_hit = multi_to_onehot(hit, 3)
+            oh_hold = multi_to_onehot(hold)
+            oh_hit = multi_to_onehot(hit)
             print("onehot shape {}".format(oh_hold.shape))
-            mh_hold = one_to_multihot(oh_hold, 3)
-            mh_hit = one_to_multihot(oh_hit, 3)
+            mh_hold = one_to_multihot(oh_hold)
+            mh_hit = one_to_multihot(oh_hit)
             pattern = decode(mh_hold, hit, a)
             midi.write_midifile(filename.replace(".mid", "_sample.mid"), pattern)
             # songMatrix = midi_to_matrix.midiToNoteStateMatrix(songs_dir + filename)
