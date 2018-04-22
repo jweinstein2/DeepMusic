@@ -153,11 +153,16 @@ class MusicGen:
 				self.current_state: current_state,
 			})
 
+		# TODO Several options for generation:
+		#	* Round each probability
+		#	* Sample stochastically according to distribution
+		#	* Feed in probability distribution at next prediction
+
 		pred_hold, pred_hit = [], []
 		for i in xrange(length):
 
-			# y_hold = one_to_multihot(y_hold)
-			# y_hit = one_to_multihot(y_hit)
+			# y_hold = np.round(y_hold)
+			# y_hit = np.round(y_hit)
 			pred_hold.append(y_hold)
 			pred_hit.append(y_hit)
 
@@ -169,8 +174,8 @@ class MusicGen:
 			})
 
 		return (
-			np.stack(pred_hold, axis=1).astype(np.int64),
-			np.stack(pred_hit, axis=1).astype(np.int64),
+			np.stack(pred_hold, axis=1),
+			np.stack(pred_hit, axis=1),
 		)
 
 crop_data = lambda data: data[:len(data) - (len(data) % TIME_STEPS),:]
@@ -188,16 +193,12 @@ if __name__ == "__main__":
 	# print("Training data of shape {}".format(data.shape))
 
 	print("Loading data..")
-	X_hold, X_hit, attr = encode("data/songs/moonlightinvermont.mid", False)
-	
-	# Cut off extra stuff
+	X_hold, X_hit, attr = encode("data/songs/moonlightinvermont.mid", False)	
 	X_hold, X_hit = map(crop_data, [X_hold, X_hit])
-	
-	# Build Y tensors
-	# y_hold, y_hit = map(multi_to_onehot, [X_hold, X_hit])
+	stats(X_hold, X_hit)
 
 	# Stack by timesteps
-	X_hold, X_hit = map(stack, [X_hold, X_hit]) # , y_hold, y_hit
+	X_hold, X_hit = map(stack, [X_hold, X_hit])
 
 	print("Loaded tensors of shapes {}, {}!".format(X_hold.shape, X_hit.shape))
 
