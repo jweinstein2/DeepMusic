@@ -16,7 +16,7 @@ N_EMBED = 64
 N_HIDDEN = 256
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 10 # 100
+N_EPOCHS = 100 # 100
 BATCH_SIZE = 30
 ETA = .01
 n_lstm_layers = 2
@@ -36,8 +36,10 @@ def f(X):
 
 def stats(pred_hold, pred_hit):
 	print("Stats:")
-	print("  mean notes held:", np.mean(np.sum(pred_hold, axis=1)))
-	print("  mean notes hit:", np.mean(np.sum(pred_hit, axis=1)))
+	print("  mean notes held / t:", np.mean(np.sum(pred_hold, axis=1)))
+	print("  mean notes hit / t:", np.mean(np.sum(pred_hit, axis=1)))
+	print("  mean notes held:", np.mean(pred_hold))
+	print("  mean notes hit:", np.mean(pred_hit))
 	# sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
 	# print("  shape: {}".format(arr.shape))
 	# print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
@@ -163,8 +165,8 @@ class MusicGen:
 
 			# y_hold = np.round(y_hold)
 			# y_hit = np.round(y_hit)
-			pred_hold.append(y_hold)
-			pred_hit.append(y_hit)
+			pred_hold.append(np.round(y_hold))
+			pred_hit.append(np.round(y_hit))
 
 			y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
 				self.x_hold: y_hold,
