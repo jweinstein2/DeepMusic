@@ -73,7 +73,7 @@ def encode(midifile, compress=False):
     # print grid.shape
     # print total_ticks
     # XXX: easy way to limit num of notes per timestep
-    grid = one_to_multihot(multi_to_onehot(grid))
+    # grid = one_to_multihot(multi_to_onehot(grid))
 
     if compress:
         # collapse octaves by taking max for each note
@@ -127,6 +127,10 @@ def decode(hold, hit, attributes):
             if hold_step[note] == 0 and prev_hold[note] == 1:
                 track.append(midi.NoteOffEvent(tick=tick_offset, pitch=pitch))
                 n_noteoff += 1
+                tick_offset = 0
+            if hold_step[note] == 1 and prev_hold[note] == 0:
+                track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
+                n_noteon += 1
                 tick_offset = 0
 
         tick_offset += 1

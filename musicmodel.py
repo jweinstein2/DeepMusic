@@ -16,7 +16,7 @@ N_EMBED = 128
 N_HIDDEN = 128
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 100 # 100
+N_EPOCHS = 10 # 100
 BATCH_SIZE = 30
 ETA = .01
 n_lstm_layers = 2
@@ -127,7 +127,7 @@ class MusicGen:
 			self.current_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
 			state = self.hidden_state, self.current_state
 			h, state = self.stacked_lstm(e, state)
-			
+
 			y = tf.matmul(h, self.W) + self.b
 			self.y_hold, self.y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 			self.y_hold = tf.sigmoid(self.y_hold) #softmax
@@ -220,7 +220,7 @@ if __name__ == "__main__":
 	stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
 	gen = MusicGen()
-	gen.add_train_graph()
+	# gen.add_train_graph()
 	gen.add_gen_graph()
 
 	saver = tf.train.Saver()
@@ -229,14 +229,14 @@ if __name__ == "__main__":
 	print("Initializing all variables")
 	session.run(tf.global_variables_initializer())
 
-	print("Training..")
-	gen.train(X_hold, X_hit, session)
-	saver.save(session, "models/recent")
-	print("Training completed!")
+	# print("Training..")
+	# gen.train(X_hold, X_hit, session)
+	# saver.save(session, "models/recent")
+	# print("Training completed!")
 
-	# print("Restoring..")
-	# saver.restore(session, "models/recent")
-	# print("Model models/recent restored!")
+	print("Restoring..")
+	saver.restore(session, "models/recent")
+	print("Model models/recent restored!")
 
 	print("Predicting..")
 	pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)
