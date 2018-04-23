@@ -160,15 +160,13 @@ def decode(hold, hit, attributes):
                     track.append(midi.NoteOffEvent(tick=tick_offset, pitch=pitch))
                     n_noteoff += 1
                     tick_offset = 0
-                track.append(midi.NoteOnEvent(tick=tick_offset, velocity=0, pitch=pitch))
+                track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
                 n_noteon += 1
                 tick_offset = 0
             elif hold_step[note] == 1 and prev_hold[note] == 0:
                 track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
                 n_noteon += 1
                 tick_offset = 0
-
-
 
         tick_offset += 1
         prev_hold = hold_step
@@ -182,13 +180,6 @@ def decode(hold, hit, attributes):
 songs_dir = './songs/'
 
 if __name__ == "__main__":
-    # print("demo")
-    # arr = [[0,0,0,0],[1,1,1,1],[0,1,0,1]]
-    # oh = multi_to_onehot(arr, n=3, l=4)
-    # mh = one_to_multihot(oh, n=3, l=4)
-    # print arr
-    # print mh
-
     for filename in os.listdir(songs_dir):
         if filename.endswith('.mid'):
             hold, hit, a = encode(songs_dir + filename, False)
