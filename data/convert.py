@@ -92,6 +92,10 @@ def encode(midifile, compress=False):
     # XXX: easy way to limit num of notes per timestep
     # grid = one_to_multihot(multi_to_onehot(grid))
 
+    # downsample
+    sample_size = 12 * 4
+    grid = grid[::sample_size,:]
+
     if compress:
         # collapse octaves by taking max for each note
         grid = _compress(grid)
@@ -107,7 +111,7 @@ def encode(midifile, compress=False):
     attributes = {
             'bpm': bpm / 2,
             'compressed': compress,
-            'sample_size': sample_size
+            'sample': sample_size
     }
     return hold, hit, attributes
 
@@ -115,7 +119,7 @@ def encode(midifile, compress=False):
 def decode(hold, hit, attributes):
     trans = int(attributes['compressed']) * 72
     bpm = attributes['bpm']
-    upsample = attributes["sample_size"]
+    upsample = attributes['sample']
 
     print("decoded shape {}".format(np.asarray(hold).shape))
     if np.array(hold).shape != np.array(hit).shape:
@@ -127,12 +131,12 @@ def decode(hold, hit, attributes):
     out = np.zeros((m*upsample,n),dtype=hit.dtype)
     out[0::upsample,:] = hit
     hit = out
-    print("shapes {} {}".format( hold.shape )
+    print("shapes {} {}".format( hold.shape, hit.shape ))
 
     pattern = midi.Pattern()
     track = midi.Track()
     tempoEvent = midi.SetTempoEvent()
-    tempoEvent.set_bpm(bpm)
+    tempoEvent.set_bpm(int(bpm))
     track.append(tempoEvent)
     pattern.append(track)
 
@@ -155,10 +159,10 @@ def decode(hold, hit, attributes):
                 track.append(midi.NoteOffEvent(tick=tick_offset, pitch=pitch))
                 n_noteoff += 1
                 tick_offset = 0
-            if hold_step[note] == 1 and prev_hold[note] == 0:
-                track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
-                n_noteon += 1
-                tick_offset = 0
+            # if hold_step[note] == 1 and prev_hold[note] == 0:
+            #     track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
+            #     n_noteon += 1
+            #     tick_offset = 0
 
             if hold_step[note] == 1 and prev_hold[note] == 0:
                 track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
@@ -188,10 +192,6 @@ if __name__ == "__main__":
     for filename in os.listdir(songs_dir):
         if filename.endswith('.mid'):
             hold, hit, a = encode(songs_dir + filename, False)
-            # plt.imshow(hold, cmap="hot", interpolation="nearest")
-            # plt.show()
-            # plt.imshow(hit, cmap="hot", interpolation="nearest")
-            # plt.show()
             # oh_hold = multi_to_onehot(hold)
             # oh_hit = multi_to_onehot(hit)
             print("onehot shape {}".format(hold.shape))
