@@ -121,11 +121,13 @@ class MusicGen:
 			self.x_hit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
 			x = tf.concat([self.x_hold, self.x_hit], axis=1)
 
+			e = tf.nn.relu(tf.matmul(x, self.We) + self.be)
+
 			self.hidden_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
 			self.current_state = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_HIDDEN])
 			state = self.hidden_state, self.current_state
-
-			h, state = self.stacked_lstm(x, state)
+			h, state = self.stacked_lstm(e, state)
+			
 			y = tf.matmul(h, self.W) + self.b
 			self.y_hold, self.y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 			self.y_hold = tf.sigmoid(self.y_hold) #softmax
