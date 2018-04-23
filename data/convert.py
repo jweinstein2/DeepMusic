@@ -75,6 +75,10 @@ def encode(midifile, compress=False):
     # XXX: easy way to limit num of notes per timestep
     # grid = one_to_multihot(multi_to_onehot(grid))
 
+    # downsample
+    sample_size = 12 * 4
+    grid = grid[::sample_size,:]
+
     if compress:
         # collapse octaves by taking max for each note
         grid = _compress(grid)
@@ -89,7 +93,8 @@ def encode(midifile, compress=False):
 
     attributes = {
             'bpm': bpm / 2,
-            'compressed': compress
+            'compressed': compress,
+            'sample': sample_size
     }
     return hold, hit, attributes
 
@@ -97,15 +102,24 @@ def encode(midifile, compress=False):
 def decode(hold, hit, attributes):
     trans = int(attributes['compressed']) * 72
     bpm = attributes['bpm']
+    upsample = attributes['sample']
 
     print("decoded shape {}".format(np.asarray(hold).shape))
     if np.array(hold).shape != np.array(hit).shape:
         print("Decode: Assumption violated")
 
+    # upsample
+    hold = np.repeat(hold, upsample, axis=0)
+    m,n = hit.shape
+    out = np.zeros((m*upsample,n),dtype=hit.dtype)
+    out[0::upsample,:] = hit
+    hit = out
+    print("shapes {} {}".format( hold.shape, hit.shape ))
+
     pattern = midi.Pattern()
     track = midi.Track()
     tempoEvent = midi.SetTempoEvent()
-    tempoEvent.set_bpm(bpm)
+    tempoEvent.set_bpm(int(bpm))
     track.append(tempoEvent)
     pattern.append(track)
 
@@ -128,10 +142,10 @@ def decode(hold, hit, attributes):
                 track.append(midi.NoteOffEvent(tick=tick_offset, pitch=pitch))
                 n_noteoff += 1
                 tick_offset = 0
-            if hold_step[note] == 1 and prev_hold[note] == 0:
-                track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
-                n_noteon += 1
-                tick_offset = 0
+            # if hold_step[note] == 1 and prev_hold[note] == 0:
+            #     track.append(midi.NoteOnEvent(tick=tick_offset, velocity=100, pitch=pitch))
+            #     n_noteon += 1
+            #     tick_offset = 0
 
         tick_offset += 1
         prev_hold = hold_step
@@ -145,22 +159,22 @@ def decode(hold, hit, attributes):
 songs_dir = './songs/'
 
 if __name__ == "__main__":
-    print("demo")
-    arr = [[0,0,0,0],[1,1,1,1],[0,1,0,1]]
-    oh = multi_to_onehot(arr, n=3, l=4)
-    mh = one_to_multihot(oh, n=3, l=4)
-    print arr
-    print mh
+    # print("demo")
+    # arr = [[0,0,0,0],[1,1,1,1],[0,1,0,1]]
+    # oh = multi_to_onehot(arr, n=3, l=4)
+    # mh = one_to_multihot(oh, n=3, l=4)
+    # print arr
+    # print mh
 
     for filename in os.listdir(songs_dir):
         if filename.endswith('.mid'):
             hold, hit, a = encode(songs_dir + filename, False)
-            oh_hold = multi_to_onehot(hold)
-            oh_hit = multi_to_onehot(hit)
-            print("onehot shape {}".format(oh_hold.shape))
-            mh_hold = one_to_multihot(oh_hold)
-            mh_hit = one_to_multihot(oh_hit)
-            pattern = decode(mh_hold, hit, a)
+            # oh_hold = multi_to_onehot(hold)
+            # oh_hit = multi_to_onehot(hit)
+            print("onehot shape {}".format(hold.shape))
+            # mh_hold = one_to_multihot(oh_hold)
+            # mh_hit = one_to_multihot(oh_hit)
+            pattern = decode(hold, hit, a)
             midi.write_midifile(filename.replace(".mid", "_sample.mid"), pattern)
             # songMatrix = midi_to_matrix.midiToNoteStateMatrix(songs_dir + filename)
             # midi_to_matrix.noteStateMatrixToMidi(songMatrix, name="test")
