@@ -43,8 +43,6 @@ def multi_to_onehot(array, n=N_NOTES_MAX, l=128):
     return np.apply_along_axis(ntuple, axis=1, arr=array)
 
 def encode(midifile, compress=False):
-    sample_size = 1
-
     pattern = midi.read_midifile(midifile)
     total_ticks = 0
     musical_events = []
@@ -75,18 +73,6 @@ def encode(midifile, compress=False):
             if isinstance(event, midi.NoteOnEvent):
                 current_vector[event.pitch] = event.velocity
 
-
-    # plt.imshow(grid[:3600,:], cmap="hot", interpolation="nearest")
-    # plt.show()
-
-    # downsample
-    print grid.shape
-    grid = grid[::sample_size,:]
-    print grid.shape
-
-    # plt.imshow(grid[:300,:], cmap="hot", interpolation="nearest")
-    # plt.show()
-
     # print grid.shape
     # print total_ticks
     # XXX: easy way to limit num of notes per timestep
@@ -95,6 +81,9 @@ def encode(midifile, compress=False):
     # downsample
     sample_size = 12
     grid = grid[::sample_size,:]
+
+    # plt.imshow(grid[:300,:], cmap="hot", interpolation="nearest")
+    # plt.show()
 
     if compress:
         # collapse octaves by taking max for each note
