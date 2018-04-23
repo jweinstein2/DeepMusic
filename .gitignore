@@ -9,3 +9,4 @@
 *.mid
 *.pyc
 .DS_Store
+models

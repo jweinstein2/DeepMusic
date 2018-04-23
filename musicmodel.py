@@ -22,6 +22,9 @@ ETA = .01
 n_lstm_layers = 2
 keep_prob = 0.5
 
+EPSILON = 0.25
+
+START = 500
 N_SEED = 60
 
 def f(X):
@@ -36,6 +39,8 @@ def f(X):
 
 def stats(pred_hold, pred_hit):
 	print("Stats:")
+	print("  held shape:", pred_hold.shape)
+	print("  hit shape:", pred_hit.shape)
 	print("  mean notes held / t:", np.mean(np.sum(pred_hold, axis=1)))
 	print("  mean notes hit / t:", np.mean(np.sum(pred_hit, axis=1)))
 	print("  mean notes held:", np.mean(pred_hold))
@@ -165,8 +170,8 @@ class MusicGen:
 
 			# y_hold = np.round(y_hold)
 			# y_hit = np.round(y_hit)
-			pred_hold.append(np.round(y_hold))
-			pred_hit.append(np.round(y_hit))
+			pred_hold.append((y_hold > EPSILON).astype(np.int32))
+			pred_hit.append((y_hit > EPSILON).astype(np.int32))
 
 			y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
 				self.x_hold: y_hold,
@@ -195,18 +200,23 @@ if __name__ == "__main__":
 	# print("Training data of shape {}".format(data.shape))
 
 	print("Loading data..")
-	X_hold, X_hit, attr = encode("data/songs/moonlightinvermont.mid", False)	
-	X_hold, X_hit = map(crop_data, [X_hold, X_hit])
-	stats(X_hold, X_hit)
+	raw_hold, raw_hit, attr = encode("data/songs/moonlightinvermont.mid", False)	
+	raw_hold, raw_hit = map(crop_data, [raw_hold, raw_hit])
+	stats(raw_hold, raw_hit)
 
 	# Stack by timesteps
-	X_hold, X_hit = map(stack, [X_hold, X_hit])
+	X_hold, X_hit = map(stack, [raw_hold, raw_hit])
 
-	print("Loaded tensors of shapes {}, {}!".format(X_hold.shape, X_hit.shape))
+	print("Calculating seed..")
+	seed_hold = X_hold[START:START + BATCH_SIZE,:N_SEED, :]
+	seed_hit = X_hit[START:START + BATCH_SIZE,:N_SEED, :]
+	stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
 	gen = MusicGen()
 	gen.add_train_graph()
 	gen.add_gen_graph()
+
+	saver = tf.train.Saver()
 
 	session = tf.Session()
 	print("Initializing all variables")
@@ -214,10 +224,15 @@ if __name__ == "__main__":
 
 	print("Training..")
 	gen.train(X_hold, X_hit, session)
+	saver.save(session, "models/recent")
 	print("Training completed!")
 
+	# print("Restoring..")
+	# saver.restore(session, "models/recent")
+	# print("Model models/recent restored!")
+
 	print("Predicting..")
-	pred_hold, pred_hit = gen.predict(X_hold[:BATCH_SIZE,:N_SEED, :], X_hit[:BATCH_SIZE,:N_SEED, :], session)
+	pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)
 	print("Predicted tensors of shapes {}, {}!".format(pred_hold.shape, pred_hit.shape))
 	
 	print("Encoding MIDI..")
