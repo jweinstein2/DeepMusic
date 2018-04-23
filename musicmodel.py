@@ -16,15 +16,15 @@ N_EMBED = 128
 N_HIDDEN = 128
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 10 # 100
-BATCH_SIZE = 30
+N_EPOCHS = 200 # Seem to need to train for 100 to get anything
+BATCH_SIZE = 10
 ETA = .01
 n_lstm_layers = 2
 keep_prob = 0.5
 
 EPSILON = 0.5
 
-START = 120
+START = 20
 N_SEED = 120
 
 def f(X):
@@ -220,7 +220,7 @@ if __name__ == "__main__":
 	stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
 	gen = MusicGen()
-	# gen.add_train_graph()
+	gen.add_train_graph()
 	gen.add_gen_graph()
 
 	saver = tf.train.Saver()
@@ -229,14 +229,14 @@ if __name__ == "__main__":
 	print("Initializing all variables")
 	session.run(tf.global_variables_initializer())
 
-	# print("Training..")
-	# gen.train(X_hold, X_hit, session)
-	# saver.save(session, "models/recent")
-	# print("Training completed!")
+	print("Training..")
+	gen.train(X_hold, X_hit, session)
+	saver.save(session, "models/recent")
+	print("Training completed!")
 
-	print("Restoring..")
-	saver.restore(session, "models/recent")
-	print("Model models/recent restored!")
+	# print("Restoring..")
+	# saver.restore(session, "models/recent")
+	# print("Model models/recent restored!")
 
 	print("Predicting..")
 	pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)

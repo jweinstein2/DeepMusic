@@ -93,7 +93,7 @@ def encode(midifile, compress=False):
     # grid = one_to_multihot(multi_to_onehot(grid))
 
     # downsample
-    sample_size = 12 * 4
+    sample_size = 12
     grid = grid[::sample_size,:]
 
     if compress:
