@@ -2,6 +2,7 @@ from __future__ import print_function, with_statement
 
 import tensorflow as tf
 from sklearn.utils import shuffle
+import random
 import pdb
 
 from data.convertmidi import *
@@ -16,7 +17,7 @@ N_EMBED = 128
 N_HIDDEN = 128
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 200 # Seem to need to train for 100 to get anything
+N_EPOCHS = 300 # Seem to need to train for 100 to get anything
 BATCH_SIZE = 10
 ETA = .01
 n_lstm_layers = 2
@@ -36,6 +37,13 @@ def f(X):
 		tf.maximum(X, 0),
 		128
 	)
+
+def sample_bernoulli(p):
+	return np.apply_along_axis(
+		lambda x: random.random() < x,
+		axis=1,
+		arr=p,
+	).astype(np.int32)
 
 def stats(pred_hold, pred_hit):
 	print("Stats:")
@@ -175,10 +183,13 @@ class MusicGen:
 		pred_hold, pred_hit = [], []
 		for i in xrange(length):
 
-			# y_hold = np.round(y_hold)
-			# y_hit = np.round(y_hit)
-			pred_hold.append((y_hold > EPSILON).astype(np.int32))
-			pred_hit.append((y_hit > EPSILON).astype(np.int32))
+			# y_hold = (y_hold > EPSILON).astype(np.int32)
+			# y_hit = (y_hit > EPSILON).astype(np.int32)
+			y_hold = sample_bernoulli(y_hold)
+			y_hit = sample_bernoulli(y_hit)
+
+			pred_hold.append(y_hold)
+			pred_hit.append(y_hit)
 
 			y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
 				self.x_hold: y_hold,
@@ -220,7 +231,7 @@ if __name__ == "__main__":
 	stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
 	gen = MusicGen()
-	gen.add_train_graph()
+	# gen.add_train_graph()
 	gen.add_gen_graph()
 
 	saver = tf.train.Saver()
@@ -229,14 +240,14 @@ if __name__ == "__main__":
 	print("Initializing all variables")
 	session.run(tf.global_variables_initializer())
 
-	print("Training..")
-	gen.train(X_hold, X_hit, session)
-	saver.save(session, "models/recent")
-	print("Training completed!")
+	# print("Training..")
+	# gen.train(X_hold, X_hit, session)
+	# saver.save(session, "models/recent")
+	# print("Training completed!")
 
-	# print("Restoring..")
-	# saver.restore(session, "models/recent")
-	# print("Model models/recent restored!")
+	print("Restoring..")
+	saver.restore(session, "models/recent")
+	print("Model models/recent restored!")
 
 	print("Predicting..")
 	pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)
