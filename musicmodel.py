@@ -62,12 +62,12 @@ class MusicGen:
 		# self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout, tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)])
 
 		# Embedding layer parameters
-		self.We = tf.get_variable(shape=[N_FEATURES * 2, N_EMBED], initializer=tf.contrib.layers.xavier_initializer())
-		self.be = tf.get_variable(shape=[N_EMBED], initializer=tf.zeros_initializer())
+		self.We = tf.get_variable("We", shape=[N_FEATURES * 2, N_EMBED], initializer=tf.contrib.layers.xavier_initializer())
+		self.be = tf.get_variable("be", shape=[N_EMBED], initializer=tf.zeros_initializer())
 
 		# Output layer parameters
-		self.W = tf.get_variable(shape=[N_HIDDEN, N_OUTPUT * 2], initializer=tf.contrib.layers.xavier_initializer())
-		self.b = tf.get_variable(shape=[N_OUTPUT * 2], initializer=tf.zeros_initializer())
+		self.W = tf.get_variable("W", shape=[N_HIDDEN, N_OUTPUT * 2], initializer=tf.contrib.layers.xavier_initializer())
+		self.b = tf.get_variable("b", shape=[N_OUTPUT * 2], initializer=tf.zeros_initializer())
 
 	def add_train_graph(self):
 
