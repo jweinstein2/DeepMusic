@@ -10,7 +10,7 @@ from data.convert import *
 print("Running tf version {}".format(tf.__version__))
 
 # Hyperparameters
-TIME_STEPS = 128
+TIME_STEPS = 120
 N_FEATURES = 128
 N_EMBED = 64
 N_HIDDEN = 256
@@ -24,8 +24,8 @@ keep_prob = 0.5
 
 EPSILON = 0.5
 
-START = 500
-N_SEED = 128
+START = 120
+N_SEED = 120
 
 def f(X):
 	"""
