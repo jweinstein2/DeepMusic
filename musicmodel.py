@@ -17,7 +17,7 @@ N_EMBED = 128
 N_HIDDEN = 128
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
-N_EPOCHS = 300 # Seem to need to train for 100 to get anything
+N_EPOCHS = 150 # Seem to need to train for 100 to get anything
 BATCH_SIZE = 10
 ETA = .01
 n_lstm_layers = 2
@@ -103,7 +103,7 @@ class MusicGen:
 
 				# Recurrent layer
 				h, state = self.stacked_lstm(e, state)
-				
+
 				# Output layer
 				y = tf.matmul(h, self.W) + self.b
 				y_hold, y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
@@ -218,7 +218,7 @@ if __name__ == "__main__":
 	# print("Training data of shape {}".format(data.shape))
 
 	print("Loading data..")
-	raw_hold, raw_hit, attr = encode("data/songs/moonlightinvermont.mid", False)	
+	raw_hold, raw_hit, attr = encode("data/songs/moonlightinvermont.mid", False)
 	raw_hold, raw_hit = map(crop_data, [raw_hold, raw_hit])
 	stats(raw_hold, raw_hit)
 
@@ -252,7 +252,7 @@ if __name__ == "__main__":
 	print("Predicting..")
 	pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)
 	print("Predicted tensors of shapes {}, {}!".format(pred_hold.shape, pred_hit.shape))
-	
+
 	print("Encoding MIDI..")
 	pred_hold, pred_hit = pred_hold[0,:,:], pred_hit[0,:,:]
 	stats(pred_hold, pred_hit)

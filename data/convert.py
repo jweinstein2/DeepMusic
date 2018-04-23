@@ -114,6 +114,8 @@ def decode(hold, hit, attributes):
     if np.array(hold).shape != np.array(hit).shape:
         print("Decode: Assumption violated")
 
+    hold = np.clip((hold + hit), a_min=0, a_max=1)
+
     # upsample
     hold = np.repeat(hold, upsample, axis=0)
     m,n = hit.shape
@@ -146,6 +148,7 @@ def decode(hold, hit, attributes):
                 tick_offset = 0
             elif hit_step[note] == 1:
                 if prev_hold[note] == 1:
+                    # rearticulation
                     track.append(midi.NoteOffEvent(tick=tick_offset, pitch=pitch))
                     n_noteoff += 1
                     tick_offset = 0
