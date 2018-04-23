@@ -12,8 +12,8 @@ print("Running tf version {}".format(tf.__version__))
 # Hyperparameters
 TIME_STEPS = 120
 N_FEATURES = 128
-N_EMBED = 64
-N_HIDDEN = 256
+N_EMBED = 128
+N_HIDDEN = 128
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 N_OUTPUT = N_FEATURES
 N_EPOCHS = 100 # 100
@@ -61,9 +61,13 @@ class MusicGen:
 		# lstm_dropout = tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=keep_prob) # dropout between lstm layers
 		# self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout, tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)])
 
+		# Embedding layer parameters
+		self.We = tf.get_variable(shape=[N_FEATURES * 2, N_EMBED], initializer=tf.contrib.layers.xavier_initializer())
+		self.be = tf.get_variable(shape=[N_EMBED], initializer=tf.zeros_initializer())
+
 		# Output layer parameters
-		self.W = tf.Variable(tf.random_normal([N_HIDDEN, N_OUTPUT * 2]))
-		self.b = tf.Variable(tf.zeros([N_OUTPUT * 2]))
+		self.W = tf.get_variable(shape=[N_HIDDEN, N_OUTPUT * 2], initializer=tf.contrib.layers.xavier_initializer())
+		self.b = tf.get_variable(shape=[N_OUTPUT * 2], initializer=tf.zeros_initializer())
 
 	def add_train_graph(self):
 
@@ -76,10 +80,6 @@ class MusicGen:
 			self.X_hit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
 			X = tf.concat([self.X_hold, self.X_hit], axis=2)
 
-			# Output tensors
-			# self.Y_hold = tf.placeholder(tf.int32, shape=[BATCH_SIZE, TIME_STEPS])
-			# self.Y_hit = tf.placeholder(tf.int32, shape=[BATCH_SIZE, TIME_STEPS])
-
 			hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
 			current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
 			state = hidden_state, current_state
@@ -88,10 +88,15 @@ class MusicGen:
 
 			for t, x_t in enumerate(tf.unstack(X, axis=1)):
 				if t == X.shape[1] - 1: # No prediction for last thing
-				   continue
+					continue
 
-				h, state = self.stacked_lstm(x_t, state)
-				# y = f(tf.matmul(h, self.W) + self.b) # piano roll prediction
+				# Embedding layer
+				e = tf.nn.relu(tf.matmul(x_t, self.We) + self.be)
+
+				# Recurrent layer
+				h, state = self.stacked_lstm(e, state)
+				
+				# Output layer
 				y = tf.matmul(h, self.W) + self.b
 				y_hold, y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 
