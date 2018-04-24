@@ -44,34 +44,41 @@ def multi_to_onehot(array, n=N_NOTES_MAX, l=128):
 
 def encode(midifile, compress=False):
     pattern = midi.read_midifile(midifile)
-    total_ticks = 0
-    musical_events = []
-    track = pattern[0]
+    maxTicks = 0
 
-    for event in track:
-        if isinstance(event, midi.SetTempoEvent):
-            bpm = event.get_bpm()
-            print "tempo event " + str(bpm)
-        if isinstance(event, midi.Event):
-            total_ticks += event.tick
-            musical_events.append(event)
+    musical_events_tracks = [] # list of list of musical events. musical_events_tracks[0] is list of musical events for track 0
+    bpm = None
+    for trk in pattern:
+        ticks = 0
+        musical_events = []
+        for event in trk:
+            if isinstance(event, midi.SetTempoEvent):
+                if bpm is None:
+                    bpm = event.get_bpm()
+                    print "tempo event " + str(bpm)
+            if isinstance(event, midi.Event):
+                ticks += event.tick
+                musical_events.append(event)
+        maxTicks = max(maxTicks, ticks)
+        musical_events_tracks.append(musical_events)
 
-    grid = np.zeros((total_ticks, 128), dtype=np.int16)
-    current_vector = np.zeros(128)
-    position_in_grid = 0
+    grid = np.zeros((maxTicks, 128), dtype=np.int16)
 
-    for event in musical_events:
-        if not isinstance(event, midi.Event):
-            position_in_grid += event.tick
-        else:
-            if event.tick != 0:
-                for i in range(event.tick):
-                    grid[position_in_grid, :] = current_vector
-                    position_in_grid += 1
-            if isinstance(event, midi.NoteOffEvent):
-                current_vector[event.pitch] = 0
-            if isinstance(event, midi.NoteOnEvent):
-                current_vector[event.pitch] = event.velocity
+    for musical_events in musical_events_tracks:
+        position_in_grid = 0
+        current_vector = np.zeros(128)
+        for event in musical_events:
+            if not isinstance(event, midi.Event):
+                position_in_grid += event.tick
+            else:
+                if event.tick != 0:
+                    for i in range(event.tick):
+                        grid[position_in_grid, :] = np.logical_or(current_vector, grid[position_in_grid,:]).astype(np.int16)
+                        position_in_grid += 1
+                if isinstance(event, midi.NoteOffEvent):
+                    current_vector[event.pitch] = 0
+                if isinstance(event, midi.NoteOnEvent):
+                    current_vector[event.pitch] = event.velocity
 
     # print grid.shape
     # print total_ticks
@@ -79,7 +86,7 @@ def encode(midifile, compress=False):
     # grid = one_to_multihot(multi_to_onehot(grid))
 
     # downsample
-    sample_size = 12
+    sample_size = 24
     grid = grid[::sample_size,:]
 
     # plt.imshow(grid[:300,:], cmap="hot", interpolation="nearest")
