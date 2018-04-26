@@ -17,7 +17,8 @@ def _compress(grid):
     return np.stack(reduced_data, axis=1)
 
 def multihot(data, le):
-    str_multi = le.inverse_transform(data)
+    index = np.argmax(data, axis = 1)
+    str_multi = le.inverse_transform(index)
     lst_multi = map(lambda x: np.fromstring(x[1:-1], dtype=int, sep=' '), str_multi)
     lst_multi = np.array(lst_multi)
     return lst_multi
@@ -28,10 +29,18 @@ def onehot(arr1, arr2):
     arr2_str = [np.array_str(i).replace('\n', '') for i in arr2]
 
     le.fit(arr1_str + arr2_str)
+    n_features = len(le.classes_)
+    print("encoding length {}".format(len(le.classes_)))
 
     arr1_oh = le.transform(arr1_str)
     arr2_oh = le.transform(arr2_str)
-    return arr1_oh, arr2_oh, le
+
+    a1_oh = np.zeros((arr1.shape[0], n_features))
+    a2_oh = np.zeros((arr2.shape[0], n_features))
+    a1_oh[np.arange(arr1.shape[0]), arr1_oh] = 1
+    a2_oh[np.arange(arr2.shape[0]), arr2_oh] = 1
+
+    return a1_oh, a2_oh, le
 
     combos = []
     for i in range(n + 1):
