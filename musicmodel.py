@@ -13,8 +13,8 @@ print("Running tf version {}".format(tf.__version__))
 # Hyperparameters
 TIME_STEPS = 120
 # N_FEATURES = 128
-N_EMBED = 512
-N_HIDDEN = 512
+N_EMBED = 1028
+N_HIDDEN = 1028
 # N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
 # N_OUTPUT = N_FEATURES
 N_EPOCHS = 3000# Seem to need to train for 100 to get anything
@@ -46,14 +46,12 @@ def sample_bernoulli(p):
     ).astype(np.int32)
 
 def sample(a, temperature=0.1):
-    a = np.log(a) / temperature
-    dist = np.exp(a)/np.sum(np.exp(a))
+    # a = np.log(a) / temperature
+    # dist = np.exp(a)/np.sum(np.exp(a))
     choices = range(len(a))
+    dist = np.array(a)**(1/temperature)
+    dist /= sum(dist)
     index = np.random.choice(choices, p=dist)
-    # a = np.array(a)**(1/temperature)
-    # a /= sum(a)
-    # print("sum: {}".format(sum(a)))
-    # index = np.argmax(np.random.multinomial(1, a, 1))
     selected = np.zeros(a.shape[0])
     selected[index] = 1
     return selected
@@ -66,10 +64,7 @@ def stats(pred_hold, pred_hit):
     print("  mean notes hit / t:", np.mean(np.sum(pred_hit, axis=1)))
     print("  mean notes held:", np.mean(pred_hold))
     print("  mean notes hit:", np.mean(pred_hit))
-    # sparsity = (np.sum(np.count_nonzero(arr)).astype(np.float)) / np.size(arr)
-    # print("  shape: {}".format(arr.shape))
-    # print("  sparsity (non-zero elements): %{}".format(sparsity * 100))
-    # print("  values range from {} to {}".format(np.amin(arr), np.amax(arr)))
+    print("  sustained:", np.mean(np.sum(np.multiply(np.roll(pred_hold, 1, axis=0), pred_hold), axis=1)))
 
 class MusicGen:
 
@@ -126,7 +121,7 @@ class MusicGen:
                 # self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hit, labels=self.X_hit[:,t + 1]))
 
                 # softmax over tokens (deepjazz)
-                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hit, labels=self.X_hit[:,t + 1]))
+                # self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hit, labels=self.X_hit[:,t + 1]))
                 self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.X_hold[:,t + 1]))
 
                 # self.loss += tf.losses.mean_squared_error(self.X[:,t + 1,:], y)
@@ -272,14 +267,14 @@ if __name__ == "__main__":
     print("Initializing all variables")
     session.run(tf.global_variables_initializer())
 
-    print("Training..")
-    gen.train(X_hold, X_hit, session)
-    saver.save(session, "models/recent")
-    print("Training completed!")
+    # print("Training..")
+    # gen.train(X_hold, X_hit, session)
+    # saver.save(session, "models/recent")
+    # print("Training completed!")
 
-    # print("Restoring..")
-    # saver.restore(session, "models/recent")
-    # print("Model models/recent restored!")
+    print("Restoring..")
+    saver.restore(session, "models/recent")
+    print("Model models/recent restored!")
 
     print("Predicting..")
     pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)
