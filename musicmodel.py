@@ -25,7 +25,7 @@ TEMPERATURE = .2
 EPSILON = 0.5
 ONEHOT = True
 
-START = 5
+START = 1
 N_SEED = 120
 
 def f(X):
@@ -88,8 +88,9 @@ class MusicGen:
         self.be = tf.get_variable("be", shape=[N_EMBED], initializer=tf.zeros_initializer())
 
         # Output layer parameters
-        self.W = tf.get_variable("W", shape=[N_HIDDEN, N_OUTPUT * 2], initializer=tf.contrib.layers.xavier_initializer())
-        self.b = tf.get_variable("b", shape=[N_OUTPUT * 2], initializer=tf.zeros_initializer())
+        n_output = N_OUTPUT if ONEHOT else N_FEATURES
+        self.W = tf.get_variable("W", shape=[N_HIDDEN, n_output], initializer=tf.contrib.layers.xavier_initializer())
+        self.b = tf.get_variable("b", shape=[n_output], initializer=tf.zeros_initializer())
 
     def add_constants(self, A, B):
 
@@ -134,7 +135,8 @@ class MusicGen:
 
                 # Output layer
                 y = tf.matmul(h, self.W) + self.b
-                y_hold, _ = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+                y_hold = y
+                # y_hold, _ = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 
                 if self.onehot:
 
@@ -151,14 +153,16 @@ class MusicGen:
                     p = tf.sigmoid(y_hold)
 
                     # can probably do this with tensor ops w/e
-                    print("Constructing one perplexity graph..")
-                    ps = []
-                    for j in xrange(self.A.shape[0]):
-                        a = self.A[j,:]
-                        b = self.B[j,:]
-                        ps.append(tf.reduce_prod(a * p + b, axis=1))
-                    p = tf.stack(ps, axis=1)
-                    print("One perplexity graph constructed!")
+                    # print("Constructing one perplexity graph..")
+                    # ps = []
+                    # for j in xrange(self.A.shape[0]):
+                    #     a = self.A[j,:]
+                    #     b = self.B[j,:]
+                    #     ps.append(tf.reduce_prod(a * p + b, axis=1))
+                    # p = tf.stack(ps, axis=1)
+                    # print("One perplexity graph constructed!")
+
+                    p = tf.reduce_prod(self.A * p[:, tf.newaxis] + self.B, axis=2)
 
                 # calculate perplexity per note
                 self.perp += tf.reduce_mean(tf.pow(2., -tf.reduce_sum(p * tf.log(p), axis=1)))
@@ -187,7 +191,8 @@ class MusicGen:
             h, state = self.stacked_lstm(e, state)
 
             y = tf.matmul(h, self.W) + self.b
-            self.y_hold, self.y_hold_len = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+            self.y_hold = y
+            # self.y_hold, self.y_hold_len = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
             
             if self.onehot:
                 self.y_hold = tf.nn.softmax(self.y_hold, axis=1)
@@ -264,12 +269,13 @@ class MusicGen:
                 y_hold = sample_bernoulli(y_hold)
 
             pred_hold.append(y_hold)
-            # TODO should try feeding prob-dist to next input
-            # assuming input is one-hot?
+
+            # softmax always predicting exactly one note / t?
 
             # update hold len
             print("before multihotting")
-            y_hold = multihot(y_hold, le) # TODO might be some weird np thing here?
+            # TODO can get issues here when multihot prediction not in training data
+            y_hold = multihot(y_hold, le)
             print("after multihotting")
             cur_hold_len = (cur_hold_len + y_hold) * y_hold
 
@@ -309,13 +315,15 @@ if __name__ == "__main__":
     oh_hold, le = onehot(raw_hold)
     stats(raw_hold)
     A, B = get_A_B(le)
-    N_OUTPUT = len(le.classes_) if ONEHOT else N_FEATURES
+    N_OUTPUT = len(le.classes_)
     print("num output: {}".format(N_OUTPUT))
 
     # Stack by timesteps
     X_hold, X_hold_len, Y_hold = map(stack, [raw_hold, raw_hold_len, oh_hold])
 
     print("Calculating seed..")
+    # print(X_hold.shape, START, BATCH_SIZE, N_SEED)
+    # print(X_hold[START:START + BATCH_SIZE,:N_SEED, :].shape)
     seed_hold = X_hold[START:START + BATCH_SIZE,:N_SEED, :]
     seed_hold_len = X_hold_len[START:START + BATCH_SIZE,:N_SEED, :]
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
