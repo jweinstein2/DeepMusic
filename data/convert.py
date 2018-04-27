@@ -23,16 +23,15 @@ def multihot(data, le):
     lst_multi = np.array(lst_multi)
     return lst_multi
 
-def onehot(arr):
-
-    le = preprocessing.LabelEncoder()
-
+def onehot(arr, le=None):
     # The \n's are used to split arrays for formatting purposes
     arr_str = [np.array_str(i).replace('\n', '') for i in arr]
+    if le == None:
+        le = preprocessing.LabelEncoder()
+        le.fit(arr_str)
 
-    le.fit(arr_str)
     n_features = len(le.classes_)
-    print("encoding length {}".format(len(le.classes_)))
+    if le == None: print("encoding length {}".format(len(le.classes_)))
 
     # generate onehot
     arr_oh = le.transform(arr_str)

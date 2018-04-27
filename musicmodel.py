@@ -190,7 +190,7 @@ class MusicGen:
                 print("Early stopping...")
                 break
 
-    def predict(self, x_hold, x_hold_len, session, length=3600):
+    def predict(self, x_hold, x_hold_len, session, le, length=3600):
 
         hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
         current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
@@ -212,7 +212,6 @@ class MusicGen:
 
         pred_hold = []
         cur_hold_len = x_hold[:,x_hold.shape[1] - 1,:]
-        pdb.set_trace()
         for i in xrange(length):
 
             # y_hold = (y_hold > EPSILON).astype(np.int32)
@@ -220,10 +219,10 @@ class MusicGen:
             # calculate next x_hold
 
             # update hold_len
-            pdb.set_trace()
             y_hold = np.apply_along_axis(sample, 1, y_hold)
-
             pred_hold.append(y_hold)
+            y_hold = multihot(y_hold, le)
+            cur_hold_len = (cur_hold_len + y_hold) * y_hold
 
             y_hold, _, hidden_state, current_state = session.run(nodes, feed_dict={
                 self.x_hold: y_hold,
@@ -232,14 +231,7 @@ class MusicGen:
                 self.current_state: current_state,
             })
 
-            # update cur_hold_len
-            pdb.set_trace()
-            cur_hold_len = cur_hold_len + y_hold
-
-        return (
-            np.stack(pred_hold, axis=1),
-            np.stack(pred_hit, axis=1),
-        )
+        return np.stack(pred_hold, axis=1)
 
 crop_data = lambda data: data[:len(data) - (len(data) % TIME_STEPS),:]
 stack = lambda data: np.stack(np.split(data, TIME_STEPS, axis=0), axis=1)
@@ -277,7 +269,7 @@ if __name__ == "__main__":
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
     gen = MusicGen()
-    gen.add_train_graph()
+    # gen.add_train_graph()
     gen.add_gen_graph()
 
     saver = tf.train.Saver()
@@ -298,8 +290,8 @@ if __name__ == "__main__":
         print("Model models/recent restored!")
 
     print("Predicting..")
-    pred_hold = gen.predict(seed_hold, seed_hold_len, session)
-    print("Predicted tensors of shapes {}, {}!".format(pred_hold.shape, pred_hold_len.shape))
+    pred_hold = gen.predict(seed_hold, seed_hold_len, session, le)
+    print("Predicted tensors of shapes {}".format(pred_hold.shape))
 
     print("Encoding MIDI..")
     pred_hold = pred_hold[0,:,:]
