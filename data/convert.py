@@ -25,6 +25,8 @@ def multihot(data, le):
 
 def onehot(arr1, arr2):
     le = preprocessing.LabelEncoder()
+
+    # The \n's are used to split arrays for formatting purposes
     arr1_str = [np.array_str(i).replace('\n', '') for i in arr1]
     arr2_str = [np.array_str(i).replace('\n', '') for i in arr2]
 
