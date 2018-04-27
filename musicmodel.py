@@ -23,6 +23,7 @@ n_lstm_layers = 2
 keep_prob = 0.5
 
 EPSILON = 0.5
+ONEHOT = True
 
 START = 5
 N_SEED = 120
@@ -86,8 +87,15 @@ class MusicGen:
         self.b = tf.get_variable("b", shape=[N_OUTPUT * 2], initializer=tf.zeros_initializer())
 
     def add_constants(self, A, B):
-        self.A = tf.constant(A)
-        self.B = tf.constant(B)
+
+        print("Adding constants..")
+
+        with tf.name_scope("const"):
+
+            self.A = tf.constant(A)
+            self.B = tf.constant(B)
+
+        print("Constants successfully added!")
 
     def add_train_graph(self, onehot=True):
 
@@ -123,15 +131,16 @@ class MusicGen:
                 y = tf.matmul(h, self.W) + self.b
                 y_hold, _ = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 
-                # multiclass sigmoid
-                # self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
-
-                # softmax over tokens (deepjazz)
-                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
-
                 if onehot:
+
+                    self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
+                    
                     p = tf.nn.softmax(y_hold)
+
                 else:
+
+                    self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
+                    
                     p = tf.sigmoid(y_hold)
                     print("initial p", p.shape)
                     p = tf.reduce_prod(self.B + self.A * p, axis=1)
@@ -201,7 +210,7 @@ class MusicGen:
                 print("Early stopping...")
                 break
 
-    def predict(self, x_hold, x_hold_len, session, length=3600):
+    def predict(self, x_hold, x_hold_len, session, le, length=3600):
 
         hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
         current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
@@ -223,7 +232,6 @@ class MusicGen:
 
         pred_hold = []
         cur_hold_len = x_hold[:,x_hold.shape[1] - 1,:]
-        pdb.set_trace()
         for i in xrange(length):
 
             # y_hold = (y_hold > EPSILON).astype(np.int32)
@@ -231,10 +239,10 @@ class MusicGen:
             # calculate next x_hold
 
             # update hold_len
-            pdb.set_trace()
             y_hold = np.apply_along_axis(sample, 1, y_hold)
-
             pred_hold.append(y_hold)
+            y_hold = multihot(y_hold, le)
+            cur_hold_len = (cur_hold_len + y_hold) * y_hold
 
             y_hold, _, hidden_state, current_state = session.run(nodes, feed_dict={
                 self.x_hold: y_hold,
@@ -243,14 +251,7 @@ class MusicGen:
                 self.current_state: current_state,
             })
 
-            # update cur_hold_len
-            pdb.set_trace()
-            cur_hold_len = cur_hold_len + y_hold
-
-        return (
-            np.stack(pred_hold, axis=1),
-            np.stack(pred_hit, axis=1),
-        )
+        return np.stack(pred_hold, axis=1)
 
 crop_data = lambda data: data[:len(data) - (len(data) % TIME_STEPS),:]
 stack = lambda data: np.stack(np.split(data, TIME_STEPS, axis=0), axis=1)
@@ -277,7 +278,7 @@ if __name__ == "__main__":
     oh_hold, le = onehot(raw_hold)
     stats(raw_hold)
     A, B = get_A_B(le)
-    N_OUTPUT = len(le.classes_)
+    N_OUTPUT = len(le.classes_) if ONEHOT else N_FEATURES
     print("num features: {}".format(N_OUTPUT))
 
     # Stack by timesteps
@@ -290,7 +291,7 @@ if __name__ == "__main__":
 
     gen = MusicGen()
     gen.add_constants(A, B)
-    gen.add_train_graph()
+    gen.add_train_graph(ONEHOT)
     gen.add_gen_graph()
 
     saver = tf.train.Saver()
@@ -301,7 +302,7 @@ if __name__ == "__main__":
 
     if args.train:
         print("Training..")
-        gen.train(X_hold, X_hit, session)
+        gen.train(X_hold, X_hold_len, session)
         saver.save(session, "models/recent")
         print("Training completed!")
 
@@ -311,8 +312,8 @@ if __name__ == "__main__":
         print("Model models/recent restored!")
 
     print("Predicting..")
-    pred_hold = gen.predict(seed_hold, seed_hold_len, session)
-    print("Predicted tensors of shapes {}, {}!".format(pred_hold.shape, pred_hold_len.shape))
+    pred_hold = gen.predict(seed_hold, seed_hold_len, session, le)
+    print("Predicted tensors of shapes {}".format(pred_hold.shape))
 
     print("Encoding MIDI..")
     pred_hold = pred_hold[0,:,:]
