@@ -85,7 +85,11 @@ class MusicGen:
         self.W = tf.get_variable("W", shape=[N_HIDDEN, N_OUTPUT * 2], initializer=tf.contrib.layers.xavier_initializer())
         self.b = tf.get_variable("b", shape=[N_OUTPUT * 2], initializer=tf.zeros_initializer())
 
-    def add_train_graph(self):
+    def add_constants(self, A, B):
+        self.A = tf.constant(A)
+        self.B = tf.constant(B)
+
+    def add_train_graph(self, onehot=True):
 
         print("Building train graph..")
 
@@ -123,10 +127,17 @@ class MusicGen:
                 # self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
 
                 # softmax over tokens (deepjazz)
-                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.X_hold[:,t + 1]))
+                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
+
+                if onehot:
+                    p = tf.nn.softmax(y_hold)
+                else:
+                    p = tf.sigmoid(y_hold)
+                    print("initial p", p.shape)
+                    p = tf.reduce_prod(self.B + self.A * p, axis=1)
+                    print("final p", p.shape)
 
                 # calculate perplexity per note
-                p = tf.nn.softmax(y_hold)
                 self.perp += tf.reduce_mean(tf.pow(2., -tf.reduce_sum(p * tf.log(p), axis=1)))
 
             self.perp /= t + 1
@@ -265,6 +276,7 @@ if __name__ == "__main__":
     raw_hold, _, raw_hold_len = map(crop_data, [raw_hold, raw_hit, raw_hold_len])
     oh_hold, le = onehot(raw_hold)
     stats(raw_hold)
+    A, B = get_A_B(le)
     N_OUTPUT = len(le.classes_)
     print("num features: {}".format(N_OUTPUT))
 
@@ -277,6 +289,7 @@ if __name__ == "__main__":
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
     gen = MusicGen()
+    gen.add_constants(A, B)
     gen.add_train_graph()
     gen.add_gen_graph()
 
