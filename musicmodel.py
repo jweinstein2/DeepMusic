@@ -5,7 +5,7 @@ from sklearn.utils import shuffle
 import random, argparse
 import pdb
 
-from data.convertmidi import *
+# from data.convertmidi import *
 from data.convert import *
 
 print("Running tf version {}".format(tf.__version__))
@@ -13,14 +13,15 @@ print("Running tf version {}".format(tf.__version__))
 # Hyperparameters
 TIME_STEPS = 120
 N_FEATURES = 128
-N_EMBED = 512 # 512
+N_EMBED = 64 # TODO best results so far with 512
 N_HIDDEN = 512 # 512
-N_EPOCHS = 200 # Seem to need to train for 100 to get anything
-BATCH_SIZE = 10
+N_EPOCHS = 100 # Seem to need to train for 100 to get anything
+BATCH_SIZE = 1
 ETA = .01
 n_lstm_layers = 2
 keep_prob = 0.5
 
+TEMPERATURE = .2
 EPSILON = 0.5
 ONEHOT = True
 
@@ -71,6 +72,11 @@ class MusicGen:
     def __init__(self, onehot=True):
 
         self.onehot = onehot
+        self.active_features = {
+            "_hold": N_FEATURES,
+            # "_hold_len": N_FEATURES,
+        }
+        n_inputs = sum(self.active_features[k] for k in self.active_features)
 
         # LSTM cell
         self.stacked_lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
@@ -78,7 +84,7 @@ class MusicGen:
         # self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_dropout, tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)])
 
         # Embedding layer parameters
-        self.We = tf.get_variable("We", shape=[N_FEATURES * 2, N_EMBED], initializer=tf.contrib.layers.xavier_initializer())
+        self.We = tf.get_variable("We", shape=[n_inputs, N_EMBED], initializer=tf.contrib.layers.xavier_initializer())
         self.be = tf.get_variable("be", shape=[N_EMBED], initializer=tf.zeros_initializer())
 
         # Output layer parameters
@@ -91,8 +97,8 @@ class MusicGen:
 
         with tf.name_scope("const"):
 
-            self.A = tf.constant(A)
-            self.B = tf.constant(B)
+            self.A = tf.constant(A, dtype=tf.float32)
+            self.B = tf.constant(B, dtype=tf.float32)
 
         print("Constants successfully added!")
 
@@ -106,12 +112,7 @@ class MusicGen:
             self.X_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
             self.X_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
             self.Y_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_OUTPUT])
-
-            active_features = [
-                self.X_hold,
-                self.X_hold_len,
-            ]
-            X = tf.concat(active_features, axis=2)
+            X = tf.concat([getattr(self, "X" + f) for f in self.active_features], axis=2)
 
             hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
             current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
@@ -145,10 +146,19 @@ class MusicGen:
 
                     self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
                     
+                    # weird dimension thing here with A
+
                     p = tf.sigmoid(y_hold)
-                    print("initial p", p.shape)
-                    p = tf.reduce_prod(self.B + self.A * p, axis=1)
-                    print("final p", p.shape)
+
+                    # can probably do this with tensor ops w/e
+                    print("Constructing one perplexity graph..")
+                    ps = []
+                    for j in xrange(self.A.shape[0]):
+                        a = self.A[j,:]
+                        b = self.B[j,:]
+                        ps.append(tf.reduce_prod(a * p + b, axis=1))
+                    p = tf.stack(ps, axis=1)
+                    print("One perplexity graph constructed!")
 
                 # calculate perplexity per note
                 self.perp += tf.reduce_mean(tf.pow(2., -tf.reduce_sum(p * tf.log(p), axis=1)))
@@ -167,7 +177,7 @@ class MusicGen:
 
             self.x_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
             self.x_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
-            x = tf.concat([self.x_hold, self.x_hold_len], axis=1)
+            x = tf.concat([getattr(self, "x" + f) for f in self.active_features], axis=1)
 
             e = tf.nn.relu(tf.matmul(x, self.We) + self.be)
 
@@ -183,7 +193,7 @@ class MusicGen:
                 self.y_hold = tf.nn.softmax(self.y_hold, axis=1)
                 # self.y_hit = tf.nn.softmax(self.y_hit, axis=1)
             else:
-                self.y_hold = tf.sigmoid(self.y_hold, axis=1)
+                self.y_hold = tf.sigmoid(self.y_hold)
 
             self.next_hidden_state, self.next_current_state = state
 
@@ -191,7 +201,7 @@ class MusicGen:
 
     def train(self, X_hold, X_hold_len, session):
         for epoch in xrange(N_EPOCHS):
-            X_hold, X_hit = shuffle(X_hold, X_hold_len)
+            X_hold, X_hold_len = shuffle(X_hold, X_hold_len)
             min_loss = loss = 0.
             perp = 0.
             epochs_wo_improvement = 0
@@ -246,10 +256,21 @@ class MusicGen:
             # y_hit = (y_hit > EPSILON).astype(np.int32)
             # calculate next x_hold
 
-            # update hold_len
-            y_hold = np.apply_along_axis(sample, 1, y_hold)
+            # control sampling
+            if self.onehot:
+                f = lambda x: sample(x, temperature=TEMPERATURE)
+                y_hold = np.apply_along_axis(f, 1, y_hold)
+            else:
+                y_hold = sample_bernoulli(y_hold)
+
             pred_hold.append(y_hold)
-            y_hold = multihot(y_hold, le)
+            # TODO should try feeding prob-dist to next input
+            # assuming input is one-hot?
+
+            # update hold len
+            print("before multihotting")
+            y_hold = multihot(y_hold, le) # TODO might be some weird np thing here?
+            print("after multihotting")
             cur_hold_len = (cur_hold_len + y_hold) * y_hold
 
             y_hold, hidden_state, current_state = session.run(nodes, feed_dict={
@@ -268,6 +289,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Train and generate music model.')
     parser.add_argument("--load", action="store_true")
+    parser.add_argument("--model", type=str, default="models/recent")
+    parser.add_argument("--song", type=str, default="data/songs/moonlightinvermont.mid")
     args = parser.parse_args()
     args.train = not args.load
 
@@ -281,7 +304,7 @@ if __name__ == "__main__":
     # print("Training data of shape {}".format(data.shape))
 
     print("Loading data..")
-    raw_hold, raw_hit, raw_hold_len, attr = encode("data/songs/moonlightinvermont.mid", False)
+    raw_hold, raw_hit, raw_hold_len, attr = encode(args.song, False)
     raw_hold, _, raw_hold_len = map(crop_data, [raw_hold, raw_hit, raw_hold_len])
     oh_hold, le = onehot(raw_hold)
     stats(raw_hold)
@@ -299,7 +322,7 @@ if __name__ == "__main__":
 
     gen = MusicGen(onehot=ONEHOT)
     gen.add_constants(A, B)
-    gen.add_train_graph()
+    if args.train: gen.add_train_graph()
     gen.add_gen_graph()
 
     saver = tf.train.Saver()
@@ -311,13 +334,13 @@ if __name__ == "__main__":
     if args.train:
         print("Training..")
         gen.train(X_hold, X_hold_len, session)
-        saver.save(session, "models/recent")
+        saver.save(session, args.model)
         print("Training completed!")
 
     else:
         print("Restoring..")
-        saver.restore(session, "models/recent")
-        print("Model models/recent restored!")
+        saver.restore(session, args.model)
+        print("Model {} restored!".format(args.model))
 
     print("Predicting..")
     pred_hold = gen.predict(seed_hold, seed_hold_len, session, le)
