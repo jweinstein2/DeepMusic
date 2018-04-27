@@ -215,10 +215,10 @@ class MusicGen:
         hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
         current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
 
-        nodes = [self.y_hold, self.y_hold_len, self.next_hidden_state, self.next_current_state]
+        nodes = [self.y_hold, self.next_hidden_state, self.next_current_state]
 
         for i in xrange(x_hold.shape[1]):
-            y_hold, _, hidden_state, current_state = session.run(nodes, feed_dict={
+            y_hold, hidden_state, current_state = session.run(nodes, feed_dict={
                 self.x_hold: x_hold[:,i,:],
                 self.x_hold_len: x_hold_len[:,i,:],
                 self.hidden_state: hidden_state,
@@ -244,7 +244,7 @@ class MusicGen:
             y_hold = multihot(y_hold, le)
             cur_hold_len = (cur_hold_len + y_hold) * y_hold
 
-            y_hold, _, hidden_state, current_state = session.run(nodes, feed_dict={
+            y_hold, hidden_state, current_state = session.run(nodes, feed_dict={
                 self.x_hold: y_hold,
                 self.x_hold_len: cur_hold_len,
                 self.hidden_state: hidden_state,
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     stats(raw_hold)
     A, B = get_A_B(le)
     N_OUTPUT = len(le.classes_) if ONEHOT else N_FEATURES
-    print("num features: {}".format(N_OUTPUT))
+    print("num output: {}".format(N_OUTPUT))
 
     # Stack by timesteps
     X_hold, X_hold_len, Y_hold = map(stack, [raw_hold, raw_hold_len, oh_hold])
