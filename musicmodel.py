@@ -12,12 +12,11 @@ print("Running tf version {}".format(tf.__version__))
 
 # Hyperparameters
 TIME_STEPS = 120
-# N_FEATURES = 128
+N_FEATURES = 128
 N_EMBED = 1028
 N_HIDDEN = 1028
-# N_OUTPUT = 349632 # 128 choose 2 + 128 choose 3 + 128
-# N_OUTPUT = N_FEATURES
-N_EPOCHS = 3000# Seem to need to train for 100 to get anything
+# N_OUTPUT = # DECIDED BY OH_FEATURES
+N_EPOCHS = 200 # Seem to need to train for 100 to get anything
 BATCH_SIZE = 10
 ETA = .01
 n_lstm_layers = 2
@@ -52,18 +51,19 @@ def sample(a, temperature=0.1):
     dist = np.array(a)**(1/temperature)
     dist /= sum(dist)
     index = np.random.choice(choices, p=dist)
+
     selected = np.zeros(a.shape[0])
     selected[index] = 1
     return selected
 
-def stats(pred_hold, pred_hit):
+def stats(pred_hold, pred_hit=None):
     print("Stats:")
     print("  held shape:", pred_hold.shape)
-    print("  hit shape:", pred_hit.shape)
+    # print("  hit shape:", pred_hit.shape)
     print("  mean notes held / t:", np.mean(np.sum(pred_hold, axis=1)))
-    print("  mean notes hit / t:", np.mean(np.sum(pred_hit, axis=1)))
+    # print("  mean notes hit / t:", np.mean(np.sum(pred_hit, axis=1)))
     print("  mean notes held:", np.mean(pred_hold))
-    print("  mean notes hit:", np.mean(pred_hit))
+    # print("  mean notes hit:", np.mean(pred_hit))
     print("  sustained:", np.mean(np.sum(np.multiply(np.roll(pred_hold, 1, axis=0), pred_hold), axis=1)))
 
 class MusicGen:
@@ -93,8 +93,10 @@ class MusicGen:
 
             # Input tensors
             self.X_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
-            self.X_hit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
-            X = tf.concat([self.X_hold, self.X_hit], axis=2)
+            self.X_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
+            self.Y_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_OUTPUT])
+
+            X = tf.concat([self.X_hold, self.X_hold_len], axis=2)
 
             hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
             current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
@@ -114,7 +116,7 @@ class MusicGen:
 
                 # Output layer
                 y = tf.matmul(h, self.W) + self.b
-                y_hold, y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+                y_hold, _ = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 
                 # multiclass sigmoid
                 # self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
@@ -122,7 +124,7 @@ class MusicGen:
 
                 # softmax over tokens (deepjazz)
                 # self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hit, labels=self.X_hit[:,t + 1]))
-                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.X_hold[:,t + 1]))
+                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
 
                 # self.loss += tf.losses.mean_squared_error(self.X[:,t + 1,:], y)
                 # self.loss += tf.cast(tf.count_nonzero(tf.cast(y, tf.int64)), tf.float32) # TODO make this smooth
@@ -139,8 +141,8 @@ class MusicGen:
         with tf.name_scope("gen"):
 
             self.x_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
-            self.x_hit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
-            x = tf.concat([self.x_hold, self.x_hit], axis=1)
+            self.x_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
+            x = tf.concat([self.x_hold, self.x_hold_len], axis=1)
 
             e = tf.nn.relu(tf.matmul(x, self.We) + self.be)
 
@@ -150,50 +152,55 @@ class MusicGen:
             h, state = self.stacked_lstm(e, state)
 
             y = tf.matmul(h, self.W) + self.b
-            self.y_hold, self.y_hit = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+            self.y_hold, self.y_hold_len = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
             self.y_hold = tf.nn.softmax(self.y_hold, axis=1) #sigmoid
-            self.y_hit = tf.nn.softmax(self.y_hit, axis=1)
+            # self.y_hit = tf.nn.softmax(self.y_hit, axis=1)
 
             self.next_hidden_state, self.next_current_state = state
 
         print("Gen graph build successfully!")
 
-    def train(self, X_hold, X_hit, session):
+    def train(self, X_hold, X_hold_len, Y_hold, session):
         for epoch in xrange(N_EPOCHS):
-            X_hold, X_hit = shuffle(X_hold, X_hit)
+            X_hold, X_hold_len = shuffle(X_hold, X_hold_len)
             min_loss = loss = 0.
-            epochs_wo_improvement = 0
+            # epochs_wo_improvement = 0
 
             for i in xrange(0, len(X_hold) - BATCH_SIZE, BATCH_SIZE):
                 batch_loss, _ = session.run([self.loss, self.train_step], feed_dict={
                     self.X_hold: X_hold[i:i + BATCH_SIZE, :, :],
-                    self.X_hit: X_hit[i:i + BATCH_SIZE, :, :],
+                    self.X_hold_len: X_hold_len[i:i + BATCH_SIZE, :, :],
+                    self.Y_hold: Y_hold[i:i + BATCH_SIZE, :, :]
                     # self.Y_hold: Y_hold[i:i + BATCH_SIZE, :],
                     # self.Y_hit: Y_hit[i:i + BATCH_SIZE, :],
                 })
                 loss += batch_loss
-            print("Epoch {} train loss: {}".format(epoch, loss))
+            print("Epoch {} train loss: {}".format(epoch, loss)),
 
-            # early stopping
-            if (loss < min_loss):
-                epochs_wo_improvent = 0
-                min_loss = loss
-            else: epochs_wo_improvement += 1
-            if epochs_wo_improvement > 16:
-                print("Early stopping...")
-                break;
+            # # early stopping
+            # if (loss < min_loss):
+            #     epochs_wo_improvement = 0
+            #     min_loss = loss
+            #     print(" * ")
+            # else:
+            #     epochs_wo_improvement += 1
+            #     print("")
 
-    def predict(self, x_hold, x_hit, session, length=3600):
+            # if epochs_wo_improvement > 21:
+            #     print("Early stopping...")
+            #     break;
+
+    def predict(self, x_hold, x_hold_len, session, length=3600):
 
         hidden_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
         current_state = np.zeros(shape=[BATCH_SIZE, N_HIDDEN])
 
-        nodes = [self.y_hold, self.y_hit, self.next_hidden_state, self.next_current_state]
+        nodes = [self.y_hold, self.y_hold_len, self.next_hidden_state, self.next_current_state]
 
         for i in xrange(x_hold.shape[1]):
-            y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
+            y_hold, _, hidden_state, current_state = session.run(nodes, feed_dict={
                 self.x_hold: x_hold[:,i,:],
-                self.x_hit: x_hit[:,i,:],
+                self.x_hold_len: x_hold_len[:,i,:],
                 self.hidden_state: hidden_state,
                 self.current_state: current_state,
             })
@@ -203,23 +210,31 @@ class MusicGen:
         #   * Sample stochastically according to distribution
         #   * Feed in probability distribution at next prediction
 
-        pred_hold, pred_hit = [], []
+        pred_hold = []
+        cur_hold_len = x_hold[:,x_hold.shape[1] - 1,:]
+        pdb.set_trace()
         for i in xrange(length):
 
             # y_hold = (y_hold > EPSILON).astype(np.int32)
             # y_hit = (y_hit > EPSILON).astype(np.int32)
+            # calculate next x_hold
+
+            # update hold_len
+            pdb.set_trace()
             y_hold = np.apply_along_axis(sample, 1, y_hold)
-            y_hit = np.apply_along_axis(sample, 1, y_hit)
 
             pred_hold.append(y_hold)
-            pred_hit.append(y_hit)
 
-            y_hold, y_hit, hidden_state, current_state = session.run(nodes, feed_dict={
+            y_hold, _, hidden_state, current_state = session.run(nodes, feed_dict={
                 self.x_hold: y_hold,
-                self.x_hit: y_hit,
+                self.x_hold_len: cur_hold_len,
                 self.hidden_state: hidden_state,
                 self.current_state: current_state,
             })
+
+            # update cur_hold_len
+            pdb.set_trace()
+            cur_hold_len = cur_hold_len + y_hold
 
         return (
             np.stack(pred_hold, axis=1),
@@ -241,20 +256,19 @@ if __name__ == "__main__":
     # print("Training data of shape {}".format(data.shape))
 
     print("Loading data..")
-    raw_hold, raw_hit, attr = encode("data/songs/moonlightinvermont.mid", False)
-    raw_hold, raw_hit = map(crop_data, [raw_hold, raw_hit])
-    raw_hold, raw_hit, le = onehot(raw_hold, raw_hit)
-    stats(raw_hold, raw_hit)
-    N_FEATURES = len(le.classes_)
-    N_OUTPUT = N_FEATURES
-    print("num features: {}".format(N_FEATURES))
+    raw_hold, raw_hit, raw_hold_len, attr = encode("data/songs/moonlightinvermont.mid", False)
+    raw_hold, _, raw_hold_len = map(crop_data, [raw_hold, raw_hit, raw_hold_len])
+    oh_hold, le = onehot(raw_hold)
+    stats(raw_hold)
+    N_OUTPUT = len(le.classes_)
+    print("num features: {}".format(N_OUTPUT))
 
     # Stack by timesteps
-    X_hold, X_hit = map(stack, [raw_hold, raw_hit])
+    X_hold, X_hold_len, Y_hold = map(stack, [raw_hold, raw_hold_len, oh_hold])
 
     print("Calculating seed..")
     seed_hold = X_hold[START:START + BATCH_SIZE,:N_SEED, :]
-    seed_hit = X_hit[START:START + BATCH_SIZE,:N_SEED, :]
+    seed_hold_len = X_hold_len[START:START + BATCH_SIZE,:N_SEED, :]
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
     gen = MusicGen()
@@ -267,24 +281,23 @@ if __name__ == "__main__":
     print("Initializing all variables")
     session.run(tf.global_variables_initializer())
 
-    # print("Training..")
-    # gen.train(X_hold, X_hit, session)
-    # saver.save(session, "models/recent")
-    # print("Training completed!")
+    print("Training..")
+    gen.train(X_hold, X_hold_len, Y_hold, session)
+    saver.save(session, "models/recent")
+    print("Training completed!")
 
-    print("Restoring..")
-    saver.restore(session, "models/recent")
-    print("Model models/recent restored!")
+    # print("Restoring..")
+    # saver.restore(session, "models/recent")
+    # print("Model models/recent restored!")
 
     print("Predicting..")
-    pred_hold, pred_hit = gen.predict(seed_hold, seed_hit, session)
-    print("Predicted tensors of shapes {}, {}!".format(pred_hold.shape, pred_hit.shape))
+    pred_hold = gen.predict(seed_hold, seed_hold_len, session)
+    print("Predicted tensors of shapes {}, {}!".format(pred_hold.shape, pred_hold_len.shape))
 
     print("Encoding MIDI..")
-    pred_hold, pred_hit = pred_hold[0,:,:], pred_hit[0,:,:]
-    stats(pred_hold, pred_hit)
+    pred_hold = pred_hold[0,:,:]
+    stats(pred_hold)
     mh_hold = multihot(pred_hold, le)
-    mh_hit = multihot(pred_hit, le)
-    pattern = decode(mh_hold, mh_hit, attr)
+    pattern = decode(mh_hold, None, attr)
     midi.write_midifile("output.mid", pattern)
     print("MIDI saved!")

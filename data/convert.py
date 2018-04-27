@@ -23,37 +23,20 @@ def multihot(data, le):
     lst_multi = np.array(lst_multi)
     return lst_multi
 
-def onehot(arr1, arr2):
+def onehot(arr):
     le = preprocessing.LabelEncoder()
-    arr1_str = [np.array_str(i).replace('\n', '') for i in arr1]
-    arr2_str = [np.array_str(i).replace('\n', '') for i in arr2]
+    arr_str = [np.array_str(i).replace('\n', '') for i in arr]
 
-    le.fit(arr1_str + arr2_str)
+    le.fit(arr_str)
     n_features = len(le.classes_)
     print("encoding length {}".format(len(le.classes_)))
 
-    arr1_oh = le.transform(arr1_str)
-    arr2_oh = le.transform(arr2_str)
+    # generate onehot
+    arr_oh = le.transform(arr_str)
+    a_oh = np.zeros((arr.shape[0], n_features))
+    a_oh[np.arange(arr.shape[0]), arr_oh] = 1
 
-    a1_oh = np.zeros((arr1.shape[0], n_features))
-    a2_oh = np.zeros((arr2.shape[0], n_features))
-    a1_oh[np.arange(arr1.shape[0]), arr1_oh] = 1
-    a2_oh[np.arange(arr2.shape[0]), arr2_oh] = 1
-
-    return a1_oh, a2_oh, le
-
-    combos = []
-    for i in range(n + 1):
-        combos += combinations(range(l), i)
-    look_up = {k: v for v, k in enumerate(combos)}
-    # mlb = preprocessing.MultiLabelBinarizer()
-    # labels = mlb.fit_transform(combos)
-
-    def ntuple(vector):
-        t = tuple(np.nonzero(vector)[0][:n])
-        return look_up[t]
-
-    return np.apply_along_axis(ntuple, axis=1, arr=array)
+    return a_oh, le
 
 def encode(midifile, compress=False):
     pattern = midi.read_midifile(midifile)
@@ -93,11 +76,6 @@ def encode(midifile, compress=False):
                 if isinstance(event, midi.NoteOnEvent):
                     current_vector[event.pitch] = event.velocity
 
-    # print grid.shape
-    # print total_ticks
-    # XXX: easy way to limit num of notes per timestep
-    # grid = one_to_multihot(multi_to_onehot(grid))
-
     # downsample
     sample_size = 24
     grid = grid[::sample_size,:]
@@ -110,6 +88,13 @@ def encode(midifile, compress=False):
         grid = _compress(grid)
 
     hold = np.clip(grid, a_min=0, a_max=1)
+    hold_len = np.zeros(grid.shape)
+    for i in range(len(grid)):
+        if i == 0:
+            hold_len[0] = hold[0]
+            continue
+        hold_len[i] = (hold_len[i - 1] + hold[i]) * hold[i]
+
     previous = np.roll(grid, 1, axis=0)
     previous[0,:] = 0
     change = (previous != grid).astype(np.int16)
@@ -122,10 +107,13 @@ def encode(midifile, compress=False):
             'compressed': compress,
             'sample': sample_size
     }
-    return hold, hit, attributes
+    return hold, hit, hold_len, attributes
 
-
+# hit = None if you want it to be ignored
 def decode(hold, hit, attributes):
+    if hit == None:
+        hit = np.zeros(hold.shape)
+
     trans = int(attributes['compressed']) * 72
     bpm = attributes['bpm']
     upsample = attributes['sample']
@@ -194,14 +182,13 @@ songs_dir = './songs/'
 if __name__ == "__main__":
     for filename in os.listdir(songs_dir):
         if filename.endswith('.mid'):
-            hold, hit, a = encode(songs_dir + filename, False)
+            hold, hit, hold_len, a = encode(songs_dir + filename, False)
 
-            oh_hold, oh_hit, le = onehot(hold, hit)
+            oh_hold, le = onehot(hold)
             print("onehot shape {}".format(oh_hold.shape))
             mh_hold = multihot(oh_hold, le)
-            mh_hit = multihot(oh_hit, le)
 
-            pattern = decode(mh_hold, mh_hit, a)
+            pattern = decode(mh_hold, None, a)
             midi.write_midifile(filename.replace(".mid", "_sample.mid"), pattern)
             # songMatrix = midi_to_matrix.midiToNoteStateMatrix(songs_dir + filename)
             # midi_to_matrix.noteStateMatrixToMidi(songMatrix, name="test")
