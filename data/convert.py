@@ -24,7 +24,7 @@ def multihot(data, le):
     return lst_multi
 
 def onehot(arr):
-    
+
     le = preprocessing.LabelEncoder()
 
     # The \n's are used to split arrays for formatting purposes
@@ -40,6 +40,14 @@ def onehot(arr):
     a_oh[np.arange(arr.shape[0]), arr_oh] = 1
 
     return a_oh, le
+
+def get_A_B(le):
+    get = lambda s: eval(s.replace(" ", ","))
+    K = np.array(map(get, le.classes_))
+    B = 1 - K
+    A = K - B
+    print("A,B shape {}".format(A.shape))
+    return A, B
 
 def encode(midifile, compress=False):
     pattern = midi.read_midifile(midifile)
@@ -188,6 +196,9 @@ if __name__ == "__main__":
             hold, hit, hold_len, a = encode(songs_dir + filename, False)
 
             oh_hold, le = onehot(hold)
+
+            A, B = get_A_B(le)
+
             print("onehot shape {}".format(oh_hold.shape))
             mh_hold = multihot(oh_hold, le)
 
