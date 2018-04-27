@@ -123,7 +123,7 @@ class MusicGen:
                 # self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
 
                 # softmax over tokens (deepjazz)
-                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.X_hold[:,t + 1]))
+                self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
 
                 # calculate perplexity per note
                 p = tf.nn.softmax(y_hold)
