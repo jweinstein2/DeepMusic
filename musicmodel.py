@@ -13,9 +13,8 @@ print("Running tf version {}".format(tf.__version__))
 # Hyperparameters
 TIME_STEPS = 120
 N_FEATURES = 128
-N_EMBED = 1028
-N_HIDDEN = 1028
-# N_OUTPUT = # DECIDED BY OH_FEATURES
+N_EMBED = 512 # 512
+N_HIDDEN = 512 # 512
 N_EPOCHS = 200 # Seem to need to train for 100 to get anything
 BATCH_SIZE = 10
 ETA = .01
@@ -69,9 +68,9 @@ def stats(pred_hold, pred_hit=None):
 
 class MusicGen:
 
-    def __init__(self):
+    def __init__(self, onehot=True):
 
-        # TODO parametrize constants as args here
+        self.onehot = onehot
 
         # LSTM cell
         self.stacked_lstm = tf.contrib.rnn.BasicLSTMCell(N_HIDDEN)
@@ -97,7 +96,7 @@ class MusicGen:
 
         print("Constants successfully added!")
 
-    def add_train_graph(self, onehot=True):
+    def add_train_graph(self):
 
         print("Building train graph..")
 
@@ -108,7 +107,11 @@ class MusicGen:
             self.X_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
             self.Y_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_OUTPUT])
 
-            X = tf.concat([self.X_hold, self.X_hold_len], axis=2)
+            active_features = [
+                self.X_hold,
+                self.X_hold_len,
+            ]
+            X = tf.concat(active_features, axis=2)
 
             hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
             current_state = tf.zeros([BATCH_SIZE, N_HIDDEN])
@@ -118,6 +121,7 @@ class MusicGen:
             self.perp = 0.
 
             for t, x_t in enumerate(tf.unstack(X, axis=1)):
+                
                 if t == X.shape[1] - 1: # No prediction for last thing
                     continue
 
@@ -131,7 +135,7 @@ class MusicGen:
                 y = tf.matmul(h, self.W) + self.b
                 y_hold, _ = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
 
-                if onehot:
+                if self.onehot:
 
                     self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
                     
@@ -174,8 +178,12 @@ class MusicGen:
 
             y = tf.matmul(h, self.W) + self.b
             self.y_hold, self.y_hold_len = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
-            self.y_hold = tf.nn.softmax(self.y_hold, axis=1) #sigmoid
-            # self.y_hit = tf.nn.softmax(self.y_hit, axis=1)
+            
+            if self.onehot:
+                self.y_hold = tf.nn.softmax(self.y_hold, axis=1)
+                # self.y_hit = tf.nn.softmax(self.y_hit, axis=1)
+            else:
+                self.y_hold = tf.sigmoid(self.y_hold, axis=1)
 
             self.next_hidden_state, self.next_current_state = state
 
@@ -289,9 +297,9 @@ if __name__ == "__main__":
     seed_hold_len = X_hold_len[START:START + BATCH_SIZE,:N_SEED, :]
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
-    gen = MusicGen()
+    gen = MusicGen(onehot=ONEHOT)
     gen.add_constants(A, B)
-    gen.add_train_graph(ONEHOT)
+    gen.add_train_graph()
     gen.add_gen_graph()
 
     saver = tf.train.Saver()
@@ -321,4 +329,4 @@ if __name__ == "__main__":
     mh_hold = multihot(pred_hold, le)
     pattern = decode(mh_hold, None, attr)
     midi.write_midifile("output.mid", pattern)
-    print("MIDI saved!")
+    print("MIDI saved to output.mid!")
