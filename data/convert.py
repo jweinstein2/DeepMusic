@@ -42,6 +42,7 @@ def onehot(arr):
     return a_oh, le
 
 def get_A_B(le):
+    # le.classes_ is a vector of strings
     get = lambda s: eval(s.replace(" ", ","))
     K = np.array(map(get, le.classes_))
     B = 1 - K
