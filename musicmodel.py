@@ -1,6 +1,7 @@
 from __future__ import print_function, with_statement, division
 
 import tensorflow as tf
+import numpy as np
 from sklearn.utils import shuffle
 import random, argparse
 import pdb
@@ -9,10 +10,11 @@ import pdb
 from data.convert import *
 
 print("Running tf version {}".format(tf.__version__))
+np.set_printoptions(precision=2)
 
 # Hyperparameters
 TIME_STEPS = 120
-N_FEATURES = 128
+N_NOTES = 128
 N_EMBED = 64 # TODO best results so far with 512
 N_HIDDEN = 512 # 512
 N_EPOCHS = 100 # Seem to need to train for 100 to get anything
@@ -21,7 +23,7 @@ ETA = .01
 n_lstm_layers = 2
 keep_prob = 0.5
 
-TEMPERATURE = .2
+TEMPERATURE = .1
 EPSILON = 0.5
 ONEHOT = True
 
@@ -73,8 +75,8 @@ class MusicGen:
 
         self.onehot = onehot
         self.active_features = {
-            "_hold": N_FEATURES,
-            # "_hold_len": N_FEATURES,
+            "_hold": N_NOTES,
+            "_hold_len": N_NOTES,
         }
         n_inputs = sum(self.active_features[k] for k in self.active_features)
 
@@ -88,7 +90,7 @@ class MusicGen:
         self.be = tf.get_variable("be", shape=[N_EMBED], initializer=tf.zeros_initializer())
 
         # Output layer parameters
-        n_output = N_OUTPUT if ONEHOT else N_FEATURES
+        n_output = N_CLASSES if ONEHOT else N_NOTES
         self.W = tf.get_variable("W", shape=[N_HIDDEN, n_output], initializer=tf.contrib.layers.xavier_initializer())
         self.b = tf.get_variable("b", shape=[n_output], initializer=tf.zeros_initializer())
 
@@ -110,9 +112,9 @@ class MusicGen:
         with tf.name_scope("train"):
 
             # Input tensors
-            self.X_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
-            self.X_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_FEATURES])
-            self.Y_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_OUTPUT])
+            self.X_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_NOTES])
+            self.X_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_NOTES])
+            self.Y_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, TIME_STEPS, N_CLASSES])
             X = tf.concat([getattr(self, "X" + f) for f in self.active_features], axis=2)
 
             hidden_state = tf.zeros(shape=[BATCH_SIZE, N_HIDDEN])
@@ -136,36 +138,23 @@ class MusicGen:
                 # Output layer
                 y = tf.matmul(h, self.W) + self.b
                 y_hold = y
-                # y_hold, _ = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+                # y_hold, _ = tf.split(y, [N_CLASSES, N_CLASSES], axis=1)
 
                 if self.onehot:
-
                     self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_hold, labels=self.Y_hold[:,t + 1]))
-                    
                     p = tf.nn.softmax(y_hold)
 
                 else:
-
                     self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_hold, labels=self.X_hold[:,t + 1]))
-                    
-                    # weird dimension thing here with A
-
                     p = tf.sigmoid(y_hold)
-
-                    # can probably do this with tensor ops w/e
-                    # print("Constructing one perplexity graph..")
-                    # ps = []
-                    # for j in xrange(self.A.shape[0]):
-                    #     a = self.A[j,:]
-                    #     b = self.B[j,:]
-                    #     ps.append(tf.reduce_prod(a * p + b, axis=1))
-                    # p = tf.stack(ps, axis=1)
-                    # print("One perplexity graph constructed!")
-
                     p = tf.reduce_prod(self.A * p[:, tf.newaxis] + self.B, axis=2)
 
                 # calculate perplexity per note
-                self.perp += tf.reduce_mean(tf.pow(2., -tf.reduce_sum(p * tf.log(p), axis=1)))
+                ent = -tf.reduce_sum(p * tf.log(p), axis=1)
+                self.ent = tf.reduce_mean(ent)
+                # self.perp = tf.pow(2., tf.reduce_sum(ent)) / tf.cast(ent.shape[0], tf.float32) # geometric mean
+                self.perp += tf.reduce_mean(tf.pow(tf.cast(2., tf.float64), tf.cast(ent, tf.float64)))
+                # TODO figure out a consistent and numerically stable way of doing this
 
             self.perp /= t + 1
             self.loss /= t + 1
@@ -179,8 +168,8 @@ class MusicGen:
 
         with tf.name_scope("gen"):
 
-            self.x_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
-            self.x_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_FEATURES])
+            self.x_hold = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_NOTES])
+            self.x_hold_len = tf.placeholder(tf.float32, shape=[BATCH_SIZE, N_NOTES])
             x = tf.concat([getattr(self, "x" + f) for f in self.active_features], axis=1)
 
             e = tf.nn.relu(tf.matmul(x, self.We) + self.be)
@@ -192,7 +181,7 @@ class MusicGen:
 
             y = tf.matmul(h, self.W) + self.b
             self.y_hold = y
-            # self.y_hold, self.y_hold_len = tf.split(y, [N_OUTPUT, N_OUTPUT], axis=1)
+            # self.y_hold, self.y_hold_len = tf.split(y, [N_CLASSES, N_CLASSES], axis=1)
             
             if self.onehot:
                 self.y_hold = tf.nn.softmax(self.y_hold, axis=1)
@@ -204,25 +193,49 @@ class MusicGen:
 
         print("Gen graph build successfully!")
 
-    def train(self, X_hold, X_hold_len, session):
+    def train(self, X_hold, X_hold_len, Y_hold, session, **args):
+
+        if "test_X_hold" in args:
+            assert "test_X_hold_len" in args and "test_Y_hold" in args
+            test_X_hold = args["test_X_hold"]
+            test_X_hold_len = args["test_X_hold_len"]
+            test_Y_hold = args["test_Y_hold"]
+        else:
+            test_X_hold = None
+
+        ents, perps = [], []
+        test_ents, test_perps = [], []
+
         for epoch in xrange(N_EPOCHS):
-            X_hold, X_hold_len = shuffle(X_hold, X_hold_len)
+            X_hold, X_hold_len, Y_hold = shuffle(X_hold, X_hold_len, Y_hold)
             min_loss = loss = 0.
-            perp = 0.
+            perp, ent = 0., 0.
             epochs_wo_improvement = 0
 
             for i in xrange(0, len(X_hold) - BATCH_SIZE, BATCH_SIZE):
-                batch_perp, batch_loss, _ = session.run([self.perp, self.loss, self.train_step], feed_dict={
+                batch_perp, batch_ent, batch_loss, _ = session.run([self.perp, self.ent, self.loss, self.train_step], feed_dict={
                     self.X_hold: X_hold[i:i + BATCH_SIZE, :, :],
                     self.X_hold_len: X_hold_len[i:i + BATCH_SIZE, :, :],
                     self.Y_hold: Y_hold[i:i + BATCH_SIZE, :, :],
-                    # self.Y_hold: Y_hold[i:i + BATCH_SIZE, :],
-                    # self.Y_hit: Y_hit[i:i + BATCH_SIZE, :],
                 })
                 perp += batch_perp
+                ent += batch_ent
                 loss += batch_loss
             den = i + 1
-            print("Epoch {} train loss/perp: {}, {}".format(epoch, loss / den, perp / den))
+            ents.append(ent / den)
+            perps.append(perp / den)
+            print("Epoch {} train loss/ent/perp: {}, {}, {}".format(epoch, loss / den, ents[-1], perps[-1]))
+            
+            # pick test set to be one batch since we're not using dynamic_rnn
+            if test_X_hold is not None:
+                test_perp, test_ent, test_loss = session.run([self.perp, self.ent, self.loss], feed_dict={
+                    self.X_hold: test_X_hold,
+                    self.X_hold_len: test_X_hold_len,
+                    self.Y_hold: test_Y_hold,
+                })
+                test_ents.append(test_ent)
+                test_perps.append(test_perp)
+                print("Epoch {} test loss/ent/perp: {}, {}, {}".format(epoch, test_loss, test_ent, test_perp))
 
             # early stopping
             if (loss < min_loss):
@@ -232,6 +245,9 @@ class MusicGen:
             if epochs_wo_improvement > 16:
                 print("Early stopping...")
                 break
+
+        if test_X_hold is not None:
+            return ents, perps, test_ents, test_perps
 
     def predict(self, x_hold, x_hold_len, session, le, length=3600):
 
@@ -295,19 +311,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Train and generate music model.')
     parser.add_argument("--load", action="store_true")
-    parser.add_argument("--model", type=str, default="models/recent")
-    parser.add_argument("--song", type=str, default="data/songs/moonlightinvermont.mid")
+    parser.add_argument("--eval", type=str, default="eval/recent.pkl")
+    parser.add_argument("--model", type=str, default="models/recent/model")
+    parser.add_argument("--song", type=str, default="data/songs/beethoven_t/appass_3.mid")
     args = parser.parse_args()
     args.train = not args.load
-
-    # print("Loading data..")
-    # data_o, attributes = midi_encode("data/songs/moonlightinvermont.mid", False)
-    # data = np.array(data_o)
-    # data = data[:len(data) - (len(data) % TIME_STEPS),:] # Cut off extra stuff
-    # stats(data)
-    # data =  # Cut song into separate samples of same length
-    # # The data should have shape (num_trials, time_steps, num_features)
-    # print("Training data of shape {}".format(data.shape))
 
     print("Loading data..")
     raw_hold, raw_hit, raw_hold_len, attr = encode(args.song, False)
@@ -315,15 +323,20 @@ if __name__ == "__main__":
     oh_hold, le = onehot(raw_hold)
     stats(raw_hold)
     A, B = get_A_B(le)
-    N_OUTPUT = len(le.classes_)
-    print("num output: {}".format(N_OUTPUT))
+    N_CLASSES = len(le.classes_)
+    print("num classes: {}".format(N_CLASSES))
 
     # Stack by timesteps
     X_hold, X_hold_len, Y_hold = map(stack, [raw_hold, raw_hold_len, oh_hold])
+    X_hold, X_hold_len, Y_hold = shuffle(X_hold, X_hold_len, Y_hold)
+
+    if args.eval is not None:
+        split = lambda X: (X[:1], X[1:])
+        test_X_hold, X_hold = split(X_hold)
+        test_X_hold_len, X_hold_len = split(X_hold_len)
+        test_Y_hold, Y_hold = split(Y_hold)
 
     print("Calculating seed..")
-    # print(X_hold.shape, START, BATCH_SIZE, N_SEED)
-    # print(X_hold[START:START + BATCH_SIZE,:N_SEED, :].shape)
     seed_hold = X_hold[START:START + BATCH_SIZE,:N_SEED, :]
     seed_hold_len = X_hold_len[START:START + BATCH_SIZE,:N_SEED, :]
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
@@ -341,7 +354,25 @@ if __name__ == "__main__":
 
     if args.train:
         print("Training..")
-        gen.train(X_hold, X_hold_len, session)
+        if args.eval is None:
+            gen.train(X_hold, X_hold_len, Y_hold, session)
+        else:
+            ents, perps, test_ent, test_perps = gen.train(X_hold, X_hold_len, Y_hold, session,
+                test_X_hold=test_X_hold,
+                test_X_hold_len=test_X_hold_len,
+                test_Y_hold=test_Y_hold,
+            )
+            print("Test entropy sequence:")
+            print(test_ents)
+            print("Test perplexity sequence:")
+            print(test_perps)
+            with open(args.eval, "w") as fh:
+                fh.write({
+                    "ents": ents,
+                    "perps": perps,
+                    "test_ents": test_ents,
+                    "test_perps": test_perps,
+                })
         saver.save(session, args.model)
         print("Training completed!")
 
