@@ -3,7 +3,7 @@ from __future__ import print_function, with_statement, division
 import tensorflow as tf
 import numpy as np
 from sklearn.utils import shuffle
-import random, argparse
+import random, argparse, pickle
 import pdb
 
 # from data.convertmidi import *
@@ -13,7 +13,7 @@ print("Running tf version {}".format(tf.__version__))
 np.set_printoptions(precision=2)
 
 # Hyperparameters
-TIME_STEPS = 120
+TIME_STEPS = 60
 N_NOTES = 128
 N_EMBED = 64 # TODO best results so far with 512
 N_HIDDEN = 512 # 512
@@ -27,8 +27,13 @@ TEMPERATURE = .1
 EPSILON = 0.5
 ONEHOT = True
 
+ACTIVE_FEATURES = {
+    "_hold": N_NOTES,
+    "_hold_len": N_NOTES,
+}
+
 START = 1
-N_SEED = 120
+N_SEED = TIME_STEPS
 
 def f(X):
     """
@@ -71,13 +76,10 @@ def stats(pred_hold, pred_hit=None):
 
 class MusicGen:
 
-    def __init__(self, onehot=True):
+    def __init__(self, onehot=ONEHOT, active_features=ACTIVE_FEATURES):
 
         self.onehot = onehot
-        self.active_features = {
-            "_hold": N_NOTES,
-            "_hold_len": N_NOTES,
-        }
+        self.active_features = active_features
         n_inputs = sum(self.active_features[k] for k in self.active_features)
 
         # LSTM cell
@@ -153,7 +155,9 @@ class MusicGen:
                 ent = -tf.reduce_sum(p * tf.log(p), axis=1)
                 self.ent = tf.reduce_mean(ent)
                 # self.perp = tf.pow(2., tf.reduce_sum(ent)) / tf.cast(ent.shape[0], tf.float32) # geometric mean
-                self.perp += tf.reduce_mean(tf.pow(tf.cast(2., tf.float64), tf.cast(ent, tf.float64)))
+                m = tf.reduce_min(ent)
+                self.perp = tf.pow(2., m) * tf.reduce_sum(tf.pow(2., ent - m)) / BATCH_SIZE
+                # self.perp += tf.reduce_mean(tf.pow(tf.cast(2., tf.float64), tf.cast(ent, tf.float64)))
                 # TODO figure out a consistent and numerically stable way of doing this
 
             self.perp /= t + 1
@@ -324,7 +328,7 @@ if __name__ == "__main__":
     stats(raw_hold)
     A, B = get_A_B(le)
     N_CLASSES = len(le.classes_)
-    print("num classes: {}".format(N_CLASSES))
+    print("n classes: {}".format(N_CLASSES))
 
     # Stack by timesteps
     X_hold, X_hold_len, Y_hold = map(stack, [raw_hold, raw_hold_len, oh_hold])
@@ -336,12 +340,14 @@ if __name__ == "__main__":
         test_X_hold_len, X_hold_len = split(X_hold_len)
         test_Y_hold, Y_hold = split(Y_hold)
 
+    print("n training batches:", X_hold.shape[0])
+
     print("Calculating seed..")
     seed_hold = X_hold[START:START + BATCH_SIZE,:N_SEED, :]
     seed_hold_len = X_hold_len[START:START + BATCH_SIZE,:N_SEED, :]
     # stats(seed_hold[0,:,:], seed_hit[0,:,:])
 
-    gen = MusicGen(onehot=ONEHOT)
+    gen = MusicGen()
     gen.add_constants(A, B)
     if args.train: gen.add_train_graph()
     gen.add_gen_graph()
@@ -357,7 +363,7 @@ if __name__ == "__main__":
         if args.eval is None:
             gen.train(X_hold, X_hold_len, Y_hold, session)
         else:
-            ents, perps, test_ent, test_perps = gen.train(X_hold, X_hold_len, Y_hold, session,
+            ents, perps, test_ents, test_perps = gen.train(X_hold, X_hold_len, Y_hold, session,
                 test_X_hold=test_X_hold,
                 test_X_hold_len=test_X_hold_len,
                 test_Y_hold=test_Y_hold,
@@ -367,12 +373,12 @@ if __name__ == "__main__":
             print("Test perplexity sequence:")
             print(test_perps)
             with open(args.eval, "w") as fh:
-                fh.write({
+                pickle.dump({
                     "ents": ents,
                     "perps": perps,
                     "test_ents": test_ents,
                     "test_perps": test_perps,
-                })
+                }, fh)
         saver.save(session, args.model)
         print("Training completed!")
 
