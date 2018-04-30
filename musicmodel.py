@@ -17,7 +17,7 @@ TIME_STEPS = 60
 N_NOTES = 128
 N_EMBED = 64 # TODO best results so far with 512
 N_HIDDEN = 512 # 512
-N_EPOCHS = 100 # Seem to need to train for 100 to get anything
+N_EPOCHS = 50 # Seem to need to train for 100 to get anything
 BATCH_SIZE = 1
 ETA = .01
 n_lstm_layers = 2
@@ -29,7 +29,7 @@ ONEHOT = True
 
 ACTIVE_FEATURES = {
     "_hold": N_NOTES,
-    "_hold_len": N_NOTES,
+    # "_hold_len": N_NOTES,
 }
 
 START = 1
@@ -124,7 +124,16 @@ class MusicGen:
             state = hidden_state, current_state
 
             self.loss = 0.
+            self.ent = 0.
             self.perp = 0.
+
+            # e = tf.nn.relu(tf.matmul(X, self.We) + self.be)
+            # h, state = tf.nn.dynamic_rnn(self.stacked_lstm, e, dtype=tf.float32)
+            # y = tf.matmul(h, self.W) + self.b
+            # y_hold = y
+
+            # print("Made graph")
+            # quit()
 
             for t, x_t in enumerate(tf.unstack(X, axis=1)):
                 
@@ -153,7 +162,7 @@ class MusicGen:
 
                 # calculate perplexity per note
                 ent = -tf.reduce_sum(p * tf.log(p), axis=1)
-                self.ent = tf.reduce_mean(ent)
+                self.ent += tf.reduce_mean(ent)
                 # self.perp = tf.pow(2., tf.reduce_sum(ent)) / tf.cast(ent.shape[0], tf.float32) # geometric mean
                 m = tf.reduce_min(ent)
                 self.perp += tf.pow(2., m) * tf.reduce_sum(tf.pow(2., ent - m)) / BATCH_SIZE
