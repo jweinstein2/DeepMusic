@@ -29,7 +29,7 @@ ONEHOT = True
 
 ACTIVE_FEATURES = {
     "_hold": N_NOTES,
-    # "_hold_len": N_NOTES,
+    "_hold_len": N_NOTES,
 }
 
 START = 1
@@ -164,8 +164,9 @@ class MusicGen:
                 ent = -tf.reduce_sum(p * tf.log(p), axis=1)
                 self.ent += tf.reduce_mean(ent)
                 # self.perp = tf.pow(2., tf.reduce_sum(ent)) / tf.cast(ent.shape[0], tf.float32) # geometric mean
-                m = tf.reduce_min(ent)
-                self.perp += tf.pow(2., m) * tf.reduce_sum(tf.pow(2., ent - m)) / BATCH_SIZE
+                m = 0 #tf.reduce_max(ent)
+                exped = tf.where(tf.is_nan(ent), tf.zeros(ent.shape, dtype=tf.float32), tf.pow(2., ent - m))
+                self.perp += tf.pow(2., m) * tf.reduce_sum(exped) / BATCH_SIZE
                 # self.perp += tf.reduce_mean(tf.pow(tf.cast(2., tf.float64), tf.cast(ent, tf.float64)))
                 # TODO figure out a consistent and numerically stable way of doing this
 
