@@ -156,7 +156,7 @@ class MusicGen:
                 self.ent = tf.reduce_mean(ent)
                 # self.perp = tf.pow(2., tf.reduce_sum(ent)) / tf.cast(ent.shape[0], tf.float32) # geometric mean
                 m = tf.reduce_min(ent)
-                self.perp = tf.pow(2., m) * tf.reduce_sum(tf.pow(2., ent - m)) / BATCH_SIZE
+                self.perp += tf.pow(2., m) * tf.reduce_sum(tf.pow(2., ent - m)) / BATCH_SIZE
                 # self.perp += tf.reduce_mean(tf.pow(tf.cast(2., tf.float64), tf.cast(ent, tf.float64)))
                 # TODO figure out a consistent and numerically stable way of doing this
 
