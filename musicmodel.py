@@ -17,7 +17,7 @@ TIME_STEPS = 60
 N_NOTES = 128
 N_EMBED = 64 # TODO best results so far with 512
 N_HIDDEN = 512 # 512
-N_EPOCHS = 50 # Seem to need to train for 100 to get anything
+N_EPOCHS = 100 # Seem to need to train for 100 to get anything
 BATCH_SIZE = 1
 ETA = .01
 n_lstm_layers = 2
@@ -29,7 +29,7 @@ ONEHOT = True
 
 ACTIVE_FEATURES = {
     "_hold": N_NOTES,
-    "_hold_len": N_NOTES,
+    # "_hold_len": N_NOTES,
 }
 
 START = 1
@@ -126,6 +126,7 @@ class MusicGen:
             self.loss = 0.
             self.ent = 0.
             self.perp = 0.
+            self.log_sperp = 0.
 
             # e = tf.nn.relu(tf.matmul(X, self.We) + self.be)
             # h, state = tf.nn.dynamic_rnn(self.stacked_lstm, e, dtype=tf.float32)
@@ -161,17 +162,26 @@ class MusicGen:
                     p = tf.reduce_prod(self.A * p[:, tf.newaxis] + self.B, axis=2)
 
                 # calculate perplexity per note
+                p = tf.cast(p, tf.float64)
                 ent = -tf.reduce_sum(p * tf.log(p), axis=1)
-                self.ent += tf.reduce_mean(ent)
+                self.ent += tf.cast(tf.reduce_mean(ent), tf.float32)
                 # self.perp = tf.pow(2., tf.reduce_sum(ent)) / tf.cast(ent.shape[0], tf.float32) # geometric mean
                 m = 0 #tf.reduce_max(ent)
-                exped = tf.where(tf.is_nan(ent), tf.zeros(ent.shape, dtype=tf.float32), tf.pow(2., ent - m))
-                self.perp += tf.pow(2., m) * tf.reduce_sum(exped) / BATCH_SIZE
+                two = tf.cast(2., tf.float64)
+                exped = tf.where(tf.is_nan(ent), tf.zeros(ent.shape, dtype=tf.float64), tf.pow(two, ent - m))
+                self.perp += tf.cast(tf.pow(two, m) * tf.reduce_sum(exped) / BATCH_SIZE, tf.float32)
                 # self.perp += tf.reduce_mean(tf.pow(tf.cast(2., tf.float64), tf.cast(ent, tf.float64)))
                 # TODO figure out a consistent and numerically stable way of doing this
 
+                # Calculate sentence perplexity
+                y_t = tf.cast(self.Y_hold[:,t + 1,:], tf.float64)
+                masked = tf.reduce_sum(p * y_t, axis=1)
+                self.log_sperp += tf.log(masked)
+
             self.perp /= t + 1
             self.loss /= t + 1
+            self.log_sperp /= -TIME_STEPS
+            self.sperp = tf.reduce_mean(tf.pow(two, self.log_sperp))
             self.train_step = tf.train.AdamOptimizer(ETA).minimize(tf.reduce_sum(self.loss))
 
         print("Train graph built successfully!")
@@ -217,39 +227,41 @@ class MusicGen:
         else:
             test_X_hold = None
 
-        ents, perps = [], []
-        test_ents, test_perps = [], []
+        losses, perps, sperps = [], [], []
+        test_losses, test_perps, test_sperps = [], [], []
 
         for epoch in xrange(N_EPOCHS):
             X_hold, X_hold_len, Y_hold = shuffle(X_hold, X_hold_len, Y_hold)
             min_loss = loss = 0.
-            perp, ent = 0., 0.
+            perp, sperp = 0., 0.
             epochs_wo_improvement = 0
 
             for i in xrange(0, len(X_hold) - BATCH_SIZE, BATCH_SIZE):
-                batch_perp, batch_ent, batch_loss, _ = session.run([self.perp, self.ent, self.loss, self.train_step], feed_dict={
+                batch_perp, batch_loss, batch_sperp, _ = session.run([self.perp, self.loss, self.sperp, self.train_step], feed_dict={
                     self.X_hold: X_hold[i:i + BATCH_SIZE, :, :],
                     self.X_hold_len: X_hold_len[i:i + BATCH_SIZE, :, :],
                     self.Y_hold: Y_hold[i:i + BATCH_SIZE, :, :],
                 })
                 perp += batch_perp
-                ent += batch_ent
+                sperp += batch_sperp
                 loss += batch_loss
             den = i + 1
-            ents.append(ent / den)
+            sperps.append(sperp / den)
             perps.append(perp / den)
-            print("Epoch {} train loss/ent/perp: {}, {}, {}".format(epoch, loss / den, ents[-1], perps[-1]))
+            losses.append(loss / den)
+            print("Epoch {} train loss/perp/sperp: {}, {}, {}".format(epoch, losses[-1], perps[-1], sperps[-1]))
             
             # pick test set to be one batch since we're not using dynamic_rnn
             if test_X_hold is not None:
-                test_perp, test_ent, test_loss = session.run([self.perp, self.ent, self.loss], feed_dict={
+                test_perp, test_loss, test_sperp = session.run([self.perp, self.loss, self.sperp], feed_dict={
                     self.X_hold: test_X_hold,
                     self.X_hold_len: test_X_hold_len,
                     self.Y_hold: test_Y_hold,
                 })
-                test_ents.append(test_ent)
                 test_perps.append(test_perp)
-                print("Epoch {} test loss/ent/perp: {}, {}, {}".format(epoch, test_loss, test_ent, test_perp))
+                test_sperps.append(test_sperp)
+                test_losses.append(test_loss)
+                print("Epoch {} test loss/perp/sperp: {}, {}, {}".format(epoch, test_loss, test_perp, test_sperp))
 
             # early stopping
             if (loss < min_loss):
@@ -261,7 +273,14 @@ class MusicGen:
                 break
 
         if test_X_hold is not None:
-            return ents, perps, test_ents, test_perps
+            return {
+                "losses": losses,
+                "perps": perps,
+                "sperps": sperps,
+                "test_losses": test_losses,
+                "test_perps": test_perps,
+                "test_sperps": test_sperps,
+            }
 
     def predict(self, x_hold, x_hold_len, session, le, length=3600):
 
@@ -373,22 +392,14 @@ if __name__ == "__main__":
         if args.eval is None:
             gen.train(X_hold, X_hold_len, Y_hold, session)
         else:
-            ents, perps, test_ents, test_perps = gen.train(X_hold, X_hold_len, Y_hold, session,
+            d = gen.train(X_hold, X_hold_len, Y_hold, session,
                 test_X_hold=test_X_hold,
                 test_X_hold_len=test_X_hold_len,
                 test_Y_hold=test_Y_hold,
             )
-            print("Test entropy sequence:")
-            print(test_ents)
-            print("Test perplexity sequence:")
-            print(test_perps)
+            print(d)
             with open(args.eval, "w") as fh:
-                pickle.dump({
-                    "ents": ents,
-                    "perps": perps,
-                    "test_ents": test_ents,
-                    "test_perps": test_perps,
-                }, fh)
+                pickle.dump(d, fh)
         saver.save(session, args.model)
         print("Training completed!")
 
